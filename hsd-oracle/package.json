@@ -14,7 +14,11 @@
     "verify-overlay": "node verify-overlay-transcript.js",
     "regtest": "node regtest-driver.js",
     "validate-body": "node validate-body.js",
-    "vectors": "node generate-vectors.js --count 10000"
+    "vectors": "node generate-vectors.js --count 10000",
+    "hsrd-phase2-fixtures": "node generate-hsrd-phase2-fixtures.js --check",
+    "generate-hsrd-phase2-fixtures": "node generate-hsrd-phase2-fixtures.js --write --check",
+    "hsrd-phase3-fixtures": "node generate-hsrd-phase3-fixtures.js --check",
+    "generate-hsrd-phase3-fixtures": "node generate-hsrd-phase3-fixtures.js --write --check"
   },
   "devDependencies": {
     "hsd": "github:handshake-org/hsd#698e252ebc7b5c1dd0a9587e342fdd153d020ae4"

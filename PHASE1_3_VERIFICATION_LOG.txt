@@ -1,0 +1,69 @@
+MeshMine / hsrd Phase 1–3 source-delivery verification
+Date: 2026-07-19
+
+Delivery scope
+==============
+The source tree contains the Phase 1 authority-safety and verification changes,
+the Phase 2 transaction-authorization foundation, and Phase 3 covenant-linkage
+plus durable side-chain/best-chain-activation work. The source is intentionally
+delivered regardless of local compilation availability.
+
+Completed checks
+================
+PASS  git diff --check
+PASS  merge-conflict marker scan (repository source, excluding vendored modules)
+PASS  python3 scripts/validate-hsrd-static.py
+PASS  npm run hsrd-phase2-fixtures --prefix hsd-oracle
+PASS  npm run hsrd-phase3-fixtures --prefix hsd-oracle
+      33 HSD covenant-link cases verified
+PASS  NODE_BACKEND=js npm run core-vectors --prefix hsd-oracle
+      14 Core v2 Node.js golden vectors verified
+PASS  NODE_BACKEND=js npm run validate-body --prefix hsd-oracle
+      HSD context-valid body package; invalid covenant/airdrop/claim cases rejected
+PASS  node --check for both added HSD fixture generators
+PASS  python3 -m py_compile scripts/validate-hsrd-static.py
+PASS  repository JSON parsing (excluding vendored node_modules)
+PASS  repository TOML parsing (excluding vendored node_modules)
+PASS  GitHub Actions YAML parsing
+PASS  delimiter/comment/string balance scan for all 27 hsrd Rust source files
+
+Checks not completed in this environment
+========================================
+NOT RUN  cargo metadata --locked --manifest-path hsrd/Cargo.toml
+NOT RUN  cargo fmt --manifest-path hsrd/Cargo.toml --all --check
+NOT RUN  cargo clippy --locked --manifest-path hsrd/Cargo.toml \
+           --workspace --all-targets --all-features -- -D warnings
+NOT RUN  cargo test --locked --manifest-path hsrd/Cargo.toml \
+           --workspace --all-targets --all-features
+NOT RUN  cargo test --locked --manifest-path hsrd/Cargo.toml \
+           --workspace --all-targets --no-default-features
+NOT RUN  cargo build --locked --release --manifest-path hsrd/Cargo.toml \
+           --workspace --all-targets --all-features
+
+Reason: cargo, rustc, and rustfmt are not installed in the execution
+environment. The nested hsrd CI job contains these exact gates.
+
+The npm dependency-audit wrapper was attempted but could not complete because
+its registry request timed out in this environment. Native bcrypto addons were
+also unavailable because the vendored oracle dependencies were installed with
+scripts disabled; applicable oracle checks therefore ran with NODE_BACKEND=js.
+
+Phase 3 boundaries
+==================
+Implemented source behavior includes:
+
+- validated non-active header/block/body retention;
+- separate best-header and active-best-block bindings;
+- strictly greater-work promotion and equal-work first-seen preservation;
+- active-to-candidate reorganization planning;
+- ancestry, canonical-disconnect, contiguous-connect, body, status, and work
+  validation before activation;
+- one immutable base snapshot, one read-your-writes overlay, and one durable
+  batch for a complete replacement;
+- a final replacement-chainwork check before commit;
+- gated restart recovery on native-experimental regtest/simnet only;
+- durable-chain startup invariants and expanded diagnostics.
+
+This does not claim complete HSD historical fork-choice parity, production
+mainnet authority, complete script/contextual covenant/name/Urkel consensus, or
+live P2P synchronization.

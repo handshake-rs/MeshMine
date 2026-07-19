@@ -1,0 +1,26 @@
+[package]
+name = "meshmine-gateway-bin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Loopback-only local HandyStratum gateway process for MeshMine"
+
+[[bin]]
+name = "meshmine-gateway"
+path = "src/main.rs"
+
+[dependencies]
+hex.workspace = true
+meshmine-gateway = { path = "../../crates/meshmine-gateway" }
+meshmine-hns = { path = "../../crates/meshmine-hns" }
+meshmine-storage = { path = "../../crates/meshmine-storage" }
+meshmine-types = { path = "../../crates/meshmine-types" }
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile = "3.20.0"

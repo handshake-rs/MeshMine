@@ -1,0 +1,19 @@
+[package]
+name = "meshmine-handoff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Authenticated, replay-safe gateway-to-Core capture handoff for MeshMine"
+
+[dependencies]
+hex.workspace = true
+meshmine-codec = { path = "../meshmine-codec" }
+meshmine-crypto = { path = "../meshmine-crypto" }
+meshmine-hns = { path = "../meshmine-hns" }
+meshmine-storage = { path = "../meshmine-storage" }
+meshmine-types = { path = "../meshmine-types" }
+thiserror.workspace = true
+
+[dev-dependencies]
+ed25519-dalek.workspace = true

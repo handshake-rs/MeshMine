@@ -1,0 +1,59 @@
+{
+  "adversarial_work_fraction": "1/5",
+  "eligible_adversarial_fraction": "1/5",
+  "member_online_probability": "99/100",
+  "correlation_groups": [
+    {
+      "member_fraction": "1/4",
+      "outage_probability": "1/1000",
+      "compromise_probability": "1/10000"
+    }
+  ],
+  "rotation_interval_seconds": 86400,
+  "lookback_window_blocks": 2016,
+  "minimum_lookback_blocks": 1008,
+  "parallel_lanes": 4,
+  "lane_model": "independent",
+  "annual_security_target": 0.000001,
+  "annual_liveness_target": 0.001,
+  "roles": [
+    {
+      "name": "mask",
+      "committee_size": 32,
+      "certificate_threshold": 23,
+      "opening_threshold": 21,
+      "eligible_population": {
+        "total_members": 1000,
+        "adversarial_members": 200
+      }
+    },
+    {
+      "name": "receipt",
+      "committee_size": 32,
+      "certificate_threshold": 23,
+      "opening_threshold": 23,
+      "eligible_population": null
+    },
+    {
+      "name": "availability",
+      "committee_size": 32,
+      "certificate_threshold": 23,
+      "opening_threshold": 23,
+      "eligible_population": null
+    },
+    {
+      "name": "settlement",
+      "committee_size": 32,
+      "certificate_threshold": 23,
+      "opening_threshold": 23,
+      "eligible_population": null
+    }
+  ],
+  "overlaps": [
+    {
+      "first_role": 0,
+      "second_role": 1,
+      "shared_members": 4
+    }
+  ]
+}

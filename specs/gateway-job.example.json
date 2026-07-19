@@ -1,0 +1,21 @@
+{
+  "id": "job-000000000001",
+  "previous_block": "0000000000000000000000000000000000000000000000000000000000000000",
+  "merkle_root": "1111111111111111111111111111111111111111111111111111111111111111",
+  "witness_root": "2222222222222222222222222222222222222222222222222222222222222222",
+  "tree_root": "3333333333333333333333333333333333333333333333333333333333333333",
+  "reserved_root": "0000000000000000000000000000000000000000000000000000000000000000",
+  "version": 0,
+  "bits": 541065215,
+  "ntime": 1700000000,
+  "mask_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+  "leading_zero_prefix_q": 1,
+  "blind_band_bits_d": 1,
+  "capture_target": "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "advertised_device_target": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "advertised_difficulty": 1,
+  "issued_ms": 1700000000000,
+  "assignment_end_ms": 1700000010000,
+  "submission_end_ms": 1700000013000,
+  "transaction_hashes": []
+}

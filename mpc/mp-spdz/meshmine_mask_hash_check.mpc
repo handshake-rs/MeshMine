@@ -1,0 +1,11 @@
+from Compiler.circuit import Circuit
+from Compiler.GC.types import sbitvec
+
+# Parser/resource conformance fixture only. A production adapter must supply
+# the canonical public parent and a VSS-bound secret mask; this fixture uses a
+# zero parent and one private input solely to compile the generated circuit.
+sb256 = sbitvec.get_type(256)
+parent = sb256(0)
+mask = sb256.get_input_from(0)
+digest = Circuit('meshmine_mask_hash')(parent, mask)
+digest.reveal_print_hex()

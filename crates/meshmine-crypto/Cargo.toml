@@ -1,0 +1,15 @@
+[package]
+name = "meshmine-crypto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Signature and domain-separation helpers for MeshMine Core v2"
+
+[dependencies]
+ed25519-dalek.workspace = true
+meshmine-codec = { path = "../meshmine-codec" }
+meshmine-hns = { path = "../meshmine-hns" }
+meshmine-storage = { path = "../meshmine-storage" }
+meshmine-types = { path = "../meshmine-types" }
+thiserror.workspace = true

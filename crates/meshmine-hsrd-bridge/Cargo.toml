@@ -1,0 +1,19 @@
+[package]
+name = "meshmine-hsrd-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Exact native hsrd-to-MeshMine mining authorization bridge"
+
+[dependencies]
+hns-consensus = { path = "../../hsrd/crates/hns-consensus" }
+hns-mining = { path = "../../hsrd/crates/hns-mining" }
+hns-primitives = { path = "../../hsrd/crates/hns-primitives" }
+meshmine-gateway = { path = "../meshmine-gateway" }
+meshmine-fast-path = { path = "../meshmine-fast-path" }
+meshmine-hns = { path = "../meshmine-hns" }
+meshmine-storage = { path = "../meshmine-storage" }
+meshmine-types = { path = "../meshmine-types" }
+hex.workspace = true
+thiserror.workspace = true

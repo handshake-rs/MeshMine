@@ -1,0 +1,122 @@
+from Compiler.circuit import Circuit
+from Compiler.GC.types import sbit, sbitvec
+from Compiler.library import do_while, public_input
+from Compiler.types import regint, sint
+
+if len(program.args) != 5:
+    raise Exception('usage: meshmine_distributed_setup Q D MEMBERS THRESHOLD')
+
+q = int(program.args[1])
+d = int(program.args[2])
+n_members = int(program.args[3])
+threshold = int(program.args[4])
+if q <= 0 or d <= 0 or q + d > 256:
+    raise Exception('invalid mask constraints')
+if n_members <= 0 or n_members > 255 or threshold <= 0 or threshold > n_members:
+    raise Exception('invalid committee threshold')
+
+
+def xor_byte(left, right):
+    return [a ^ b for a, b in zip(left, right)]
+
+
+def xtime(value):
+    high = value[7]
+    return [
+        high,
+        value[0] ^ high,
+        value[1],
+        value[2] ^ high,
+        value[3] ^ high,
+        value[4],
+        value[5],
+        value[6],
+    ]
+
+
+def gf_mul_public(value, constant):
+    result = [sbit(0) for _ in range(8)]
+    current = value
+    for bit in range(8):
+        if (constant >> bit) & 1:
+            result = xor_byte(result, current)
+        current = xtime(current)
+    return result
+
+
+def hns_bit_wire(bit):
+    # MM-0001 numbers mask bits from the most-significant bit of byte zero.
+    # MP-SPDZ/Bristol bit vectors compose bytes least-significant bit first.
+    return (bit // 8) * 8 + (7 - bit % 8)
+
+
+# The adapter supplies the canonical 32-byte HNS parent as 256 public bits,
+# LSB-first inside each byte. All computing parties consume the same public
+# input file; the per-party output below repeats the exact consumed parent so
+# every local adapter can bind it to its SetupRequest before signing.
+parent = sbitvec.from_vec([sbit(public_input()) for _ in range(256)])
+
+# A public do-while condition reveals only whether the sampled blind band was
+# zero. A rejected candidate is never output or committed. The accepted blind
+# band is exactly uniform over the nonzero d-bit strings; mapping zero to a
+# fixed nonzero string would bias it and is forbidden by MM-0001.
+mask = sbitvec.from_vec([sbit(0) for _ in range(256)])
+blind_valid = sbit(0)
+
+
+@do_while
+def sample_constrained_mask():
+    global mask, blind_valid
+    candidate = [sbit.get_random_bit() for _ in range(256)]
+    for bit in range(q):
+        candidate[hns_bit_wire(bit)] = sbit(0)
+    valid = candidate[hns_bit_wire(q)]
+    for bit in range(q + 1, q + d):
+        valid = valid | candidate[hns_bit_wire(bit)]
+    mask = sbitvec.from_vec(candidate)
+    blind_valid = valid
+    return regint(1) - valid.reveal().to_regint()
+
+
+mask_bits = mask.v
+mask_hash = Circuit('meshmine_mask_hash')(parent, mask)
+
+# Machine-readable per-party output contract. Every item is one native signed
+# 64-bit integer. Public records are identical for all parties. The private
+# records appended below are emitted only to their owning party:
+#
+#   magic, version, q, d, members, threshold,
+#   parent[32], mask_hash[32], blind_valid, local_share[32]
+regint(0x4d4d4453).binary_output()
+regint(1).binary_output()
+regint(q).binary_output()
+regint(d).binary_output()
+regint(n_members).binary_output()
+regint(threshold).binary_output()
+for byte in range(32):
+    sbitvec.from_vec(parent.v[byte * 8:(byte + 1) * 8]).reveal().to_regint().binary_output()
+for byte in range(32):
+    sbitvec.from_vec(mask_hash.v[byte * 8:(byte + 1) * 8]).reveal().to_regint().binary_output()
+blind_valid.reveal().to_regint().binary_output()
+
+# Generate one degree-(threshold-1) polynomial over GF(2^8) per mask byte.
+# The constant coefficients are the mask bytes. Remaining coefficients are
+# jointly generated secret random bytes, so no computing party knows them.
+polynomials = []
+for byte in range(32):
+    coefficients = [mask_bits[byte * 8:(byte + 1) * 8]]
+    for _ in range(1, threshold):
+        coefficients.append([sbit.get_random_bit() for _ in range(8)])
+    polynomials.append(coefficients)
+
+for party in range(n_members):
+    x = party + 1
+    share = []
+    for coefficients in polynomials:
+        value = coefficients[-1]
+        for coefficient in reversed(coefficients[:-1]):
+            value = xor_byte(gf_mul_public(value, x), coefficient)
+        share.extend(value)
+    for byte in range(32):
+        value = sint(sbitvec.from_vec(share[byte * 8:(byte + 1) * 8]))
+        value.reveal_to(party).binary_output()

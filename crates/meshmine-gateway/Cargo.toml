@@ -1,0 +1,22 @@
+[package]
+name = "meshmine-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Bounded local HandyStratum compatibility gateway for MeshMine"
+
+[dependencies]
+hex.workspace = true
+meshmine-hns = { path = "../meshmine-hns" }
+meshmine-handoff = { path = "../meshmine-handoff" }
+meshmine-storage = { path = "../meshmine-storage" }
+meshmine-types = { path = "../meshmine-types" }
+num-bigint.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+meshmine-crypto = { path = "../meshmine-crypto" }
+tempfile = "3.20.0"

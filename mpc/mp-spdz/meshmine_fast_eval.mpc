@@ -1,0 +1,173 @@
+from Compiler.circuit import Circuit
+from Compiler.GC.types import sbit, sbitvec
+from Compiler.library import public_input
+from Compiler.types import regint
+
+if len(program.args) < 5:
+    raise Exception(
+        'usage: meshmine_fast_eval Q D MEMBERS THRESHOLD INPUT_X...'
+    )
+
+q = int(program.args[1])
+d = int(program.args[2])
+n_members = int(program.args[3])
+threshold = int(program.args[4])
+if q <= 0 or d <= 0 or q + d > 256:
+    raise Exception('invalid mask constraints')
+if n_members <= 0 or n_members > 255 or threshold <= 0 or threshold > n_members:
+    raise Exception('invalid committee threshold')
+if len(program.args) != 5 + threshold:
+    raise Exception('one Shamir x coordinate is required per threshold input')
+input_xs = [int(value) for value in program.args[5:]]
+if len(set(input_xs)) != threshold:
+    raise Exception('duplicate Shamir input coordinate')
+if any(x <= 0 or x > n_members for x in input_xs):
+    raise Exception('Shamir input coordinate outside committee')
+
+
+def xor_byte(left, right):
+    return [a ^ b for a, b in zip(left, right)]
+
+
+def xtime(value):
+    high = value[7]
+    return [
+        high,
+        value[0] ^ high,
+        value[1],
+        value[2] ^ high,
+        value[3] ^ high,
+        value[4],
+        value[5],
+        value[6],
+    ]
+
+
+def gf_mul_public(value, constant):
+    result = [sbit(0) for _ in range(8)]
+    current = value
+    for bit in range(8):
+        if (constant >> bit) & 1:
+            result = xor_byte(result, current)
+        current = xtime(current)
+    return result
+
+
+def gf_mul_int(left, right):
+    product = 0
+    while right != 0:
+        if right & 1:
+            product ^= left
+        high = left & 0x80
+        left = (left << 1) & 0xff
+        if high:
+            left ^= 0x1b
+        right >>= 1
+    return product
+
+
+def gf_pow_int(value, exponent):
+    result = 1
+    while exponent != 0:
+        if exponent & 1:
+            result = gf_mul_int(result, value)
+        value = gf_mul_int(value, value)
+        exponent >>= 1
+    return result
+
+
+def gf_div_int(numerator, denominator):
+    return gf_mul_int(numerator, gf_pow_int(denominator, 254))
+
+
+def hns_bit_wire(bit):
+    # MM-0001 comparison/constraint positions are MSB-first. Circuit vectors
+    # compose each byte LSB-first.
+    return (bit // 8) * 8 + (7 - bit % 8)
+
+
+def read_public_hash():
+    return sbitvec.from_vec([sbit(public_input()) for _ in range(256)])
+
+
+def output_public_hash(value):
+    for byte in range(32):
+        bits = value.v[byte * 8:(byte + 1) * 8]
+        sbitvec.from_vec(bits).reveal().to_regint().binary_output()
+
+
+# Every party binds these same public fields in the Rust result transcript.
+parent = read_public_hash()
+expected_mask_hash = read_public_hash()
+raw_share_hash = read_public_hash()
+network_target = read_public_hash()
+
+# Each selected x coordinate belongs to canonical party x-1. The value is the
+# 32-byte share already privately output and durably committed during setup.
+input_shares = []
+for x in input_xs:
+    party = x - 1
+    input_shares.append([
+        sbitvec.get_type(8).get_input_from(party).v for _ in range(32)
+    ])
+
+# Lagrange interpolation at x=0 over the same AES GF(2^8) field used by setup.
+mask_bytes = []
+for byte in range(32):
+    value = [sbit(0) for _ in range(8)]
+    for index, x in enumerate(input_xs):
+        basis = 1
+        for other_index, other_x in enumerate(input_xs):
+            if index != other_index:
+                basis = gf_mul_int(basis, gf_div_int(other_x, other_x ^ x))
+        value = xor_byte(
+            value,
+            gf_mul_public(input_shares[index][byte], basis),
+        )
+    mask_bytes.append(value)
+mask = sbitvec.from_vec(sum(mask_bytes, []))
+
+computed_mask_hash = Circuit('meshmine_mask_hash')(parent, mask)
+hash_valid = sbit(1)
+for computed, expected in zip(computed_mask_hash.v, expected_mask_hash.v):
+    hash_valid = hash_valid & ~(computed ^ expected)
+
+prefix_valid = sbit(1)
+for bit in range(q):
+    prefix_valid = prefix_valid & ~mask.v[hns_bit_wire(bit)]
+blind_valid = mask.v[hns_bit_wire(q)]
+for bit in range(q + 1, q + d):
+    blind_valid = blind_valid | mask.v[hns_bit_wire(bit)]
+input_valid = hash_valid & prefix_valid & blind_valid
+
+# Unsigned big-endian comparison of rawShareHash XOR mask against T_net.
+less = sbit(0)
+equal = sbit(1)
+for bit in range(256):
+    wire = hns_bit_wire(bit)
+    pow_bit = raw_share_hash.v[wire] ^ mask.v[wire]
+    target_bit = network_target.v[wire]
+    less = less | (equal & ~pow_bit & target_bit)
+    equal = equal & ~(pow_bit ^ target_bit)
+winner = input_valid & (less | equal)
+
+# Public-only result contract. A valid losing run reveals no mask or powHash.
+# A winning Rust attestation releases the already committed opening share.
+#
+#   magic, version, q, d, members, threshold, input_x[threshold],
+#   parent[32], maskHash[32], rawShareHash[32], networkTarget[32],
+#   inputValid, winner
+regint(0x4d4d4645).binary_output()
+regint(1).binary_output()
+regint(q).binary_output()
+regint(d).binary_output()
+regint(n_members).binary_output()
+regint(threshold).binary_output()
+for x in input_xs:
+    regint(x).binary_output()
+output_public_hash(parent)
+output_public_hash(expected_mask_hash)
+output_public_hash(raw_share_hash)
+output_public_hash(network_target)
+input_valid.reveal().to_regint().binary_output()
+winner.reveal().to_regint().binary_output()

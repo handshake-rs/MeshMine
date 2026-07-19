@@ -1,0 +1,21 @@
+[package]
+name = "meshmine-network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Bounded authenticated overlay ingress and partition simulator for MeshMine"
+
+[dependencies]
+ed25519-dalek.workspace = true
+meshmine-codec = { path = "../meshmine-codec" }
+meshmine-crypto = { path = "../meshmine-crypto" }
+meshmine-hns = { path = "../meshmine-hns" }
+meshmine-types = { path = "../meshmine-types" }
+quinn.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true

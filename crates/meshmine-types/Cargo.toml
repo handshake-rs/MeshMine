@@ -1,0 +1,17 @@
+[package]
+name = "meshmine-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "MM-0001 Core v2 object model and canonical identifiers"
+
+[dependencies]
+meshmine-codec = { path = "../meshmine-codec" }
+meshmine-hns = { path = "../meshmine-hns" }
+thiserror.workspace = true
+
+[dev-dependencies]
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true

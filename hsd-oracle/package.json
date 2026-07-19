@@ -1,0 +1,22 @@
+{
+  "name": "meshmine-hsd-oracle",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic hsd differential oracle for MeshMine",
+  "license": "MIT",
+  "scripts": {
+    "audit": "node audit-dependencies.js",
+    "core-vectors": "node verify-core-vectors.js",
+    "audit-body": "node verify-body-artifacts.js",
+    "audit-payout": "node verify-payout-artifacts.js",
+    "mpc-vectors": "node verify-mpc-opened-vectors.js 10000",
+    "payout": "node payout-driver.js",
+    "verify-overlay": "node verify-overlay-transcript.js",
+    "regtest": "node regtest-driver.js",
+    "validate-body": "node validate-body.js",
+    "vectors": "node generate-vectors.js --count 10000"
+  },
+  "devDependencies": {
+    "hsd": "github:handshake-org/hsd#698e252ebc7b5c1dd0a9587e342fdd153d020ae4"
+  }
+}

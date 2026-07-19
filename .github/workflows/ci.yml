@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 8 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install declared Rust toolchain
+        run: rustup toolchain install 1.89.0 --profile minimal --component rustfmt,clippy
+      - name: Select declared Rust toolchain
+        run: rustup default 1.89.0
+      - name: Verify committed Rust dependency graph
+        run: cargo metadata --locked --format-version 1 > /dev/null
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hsd-oracle/package-lock.json
+      - run: npm ci --prefix hsd-oracle --ignore-scripts
+      - run: npm run audit --prefix hsd-oracle
+      - run: bash -n scripts/production-hsd-preflight.sh
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --workspace --all-targets --all-features
+      - run: cargo build --locked --release --workspace --all-targets --all-features
+      - run: NODE_BACKEND=js node hsd-oracle/verify-core-vectors.js
+      - run: ./scripts/differential.sh 10000
+      - run: cargo run --locked --quiet -p meshmine-mpc-api --bin generate_opened_vectors -- 10000 | NODE_BACKEND=js node hsd-oracle/verify-mpc-opened-vectors.js 10000
+      - run: NODE_BACKEND=js node hsd-oracle/regtest-driver.js
+      - run: NODE_BACKEND=js node hsd-oracle/validate-body.js
+      - run: NODE_BACKEND=js node hsd-oracle/payout-driver.js
+      - run: cargo run --locked --quiet -p meshmine-sim -- overlay 1000 --output /tmp/meshmine-overlay.json --explorer /tmp/meshmine-overlay.html
+      - run: NODE_BACKEND=js node hsd-oracle/verify-overlay-transcript.js /tmp/meshmine-overlay.json
+      - run: cargo run --locked --release -p meshmine-share --bin performance_gate
+      - run: cargo run --locked --release -p meshmine-settlement --bin performance_gate
+
+  rustsec:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install declared Rust toolchain
+        run: rustup toolchain install 1.89.0 --profile minimal
+      - name: Select declared Rust toolchain
+        run: rustup default 1.89.0
+      - name: Install pinned RustSec scanner
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Audit locked Rust dependencies
+        run: cargo audit

@@ -27,6 +27,8 @@
     "generate-hsrd-claim-fixtures": "node generate-hsrd-claim-fixtures.js --write --check",
     "hsrd-mainnet-claim-history": "node export-hsrd-mainnet-claim-history.js --check",
     "refresh-hsrd-mainnet-claim-history": "node export-hsrd-mainnet-claim-history.js --refresh --write --check",
+    "hsrd-mainnet-claim-replacements": "node export-hsrd-mainnet-claim-replacements.js --check",
+    "refresh-hsrd-mainnet-claim-replacements": "node export-hsrd-mainnet-claim-replacements.js --refresh --write --check",
     "hsrd-covenant-fixtures": "node generate-hsrd-covenant-fixtures.js --check",
     "generate-hsrd-covenant-fixtures": "node generate-hsrd-covenant-fixtures.js --write --check",
     "hsrd-name-state-codec-fixtures": "node generate-hsrd-name-state-codec-fixtures.js --check",

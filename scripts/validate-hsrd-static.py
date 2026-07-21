@@ -204,6 +204,7 @@ def validate_fixture_manifest() -> None:
         "p2p-wire-v1",
         "mining-template-v1",
         "mainnet-claim-history-v1",
+        "mainnet-claim-replacements-v1",
     }
     missing = sorted(required - seen_ids)
     if missing:
@@ -383,6 +384,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-airdrop-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-claim-fixtures.js",
         ROOT / "hsd-oracle/export-hsrd-mainnet-claim-history.js",
+        ROOT / "hsd-oracle/export-hsrd-mainnet-claim-replacements.js",
         ROOT / "hsd-oracle/export-hsrd-mainnet-deployment-history.js",
         ROOT / "hsd-oracle/generate-hsrd-covenant-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-name-state-codec-fixtures.js",
@@ -394,6 +396,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsrd/fixtures/hsd/airdrops/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/claims/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/claims/mainnet-history-v1.json",
+        ROOT / "hsrd/fixtures/hsd/claims/mainnet-replacements-v1.json",
         ROOT / "hsrd/fixtures/hsd/chains/mainnet-deployment-history-v1.json",
         ROOT / "hsrd/fixtures/hsd/covenants/linkage-v1.json",
         ROOT / "hsrd/fixtures/hsd/name-states/codec-v1.json",
@@ -412,6 +415,7 @@ def validate_oracle_revision() -> None:
         "hsrd-airdrop-fixtures",
         "hsrd-claim-fixtures",
         "hsrd-mainnet-claim-history",
+        "hsrd-mainnet-claim-replacements",
         "hsrd-mainnet-deployment-history",
         "hsrd-covenant-fixtures",
         "hsrd-name-state-codec-fixtures",

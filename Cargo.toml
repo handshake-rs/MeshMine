@@ -1,11 +1,16 @@
 [workspace]
 members = [
+  "bins/meshmine-cored",
+  "bins/meshmine-corelink-operatord",
   "bins/meshmine-gateway",
   "bins/meshmine-node",
+  "bins/meshmine-operatord",
+  "bins/meshmine-workd",
   "crates/meshmine-body",
   "crates/meshmine-committee-risk",
   "crates/meshmine-committee",
   "crates/meshmine-codec",
+  "crates/meshmine-core-link",
   "crates/meshmine-crypto",
   "crates/meshmine-fast-path",
   "crates/meshmine-gateway",
@@ -14,11 +19,14 @@ members = [
   "crates/meshmine-hsrd-bridge",
   "crates/meshmine-mpc-api",
   "crates/meshmine-network",
+  "crates/meshmine-parent-oracle",
+  "crates/meshmine-service",
   "crates/meshmine-settlement",
   "crates/meshmine-share",
   "crates/meshmine-sim",
   "crates/meshmine-storage",
   "crates/meshmine-types",
+  "crates/meshmine-work",
 ]
 exclude = ["hsrd"]
 resolver = "3"

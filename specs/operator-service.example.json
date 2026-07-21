@@ -1,0 +1,28 @@
+{
+  "gateway_listen": "127.0.0.1:3008",
+  "dashboard_listen": "127.0.0.1:3080",
+  "gateway_state": "/var/lib/meshmine/gateway.redb",
+  "service_state": "/var/lib/meshmine/operator.redb",
+  "job_file": "/etc/meshmine/current-gateway-job.json",
+  "password_file": "/etc/meshmine/gateway-password",
+  "username": "operator.worker",
+  "profile": "simulator",
+  "network_id": 2,
+  "core_receipt_pubkey": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "fallback_endpoints": [
+    "stratum+tcp://fallback-pool.example:3008"
+  ],
+  "poll_interval_ms": 250,
+  "job_reload_interval_ms": 1000,
+  "maximum_connections": 256,
+  "maximum_requests_per_connection": 100000,
+  "capture_drain_batch": 1000,
+  "maximum_authorization_failures": 32,
+  "unhealthy_samples_before_fallback": 3,
+  "healthy_samples_before_restore": 5,
+  "minimum_fallback_hold_ms": 15000,
+  "capture_backlog_soft_limit": 10000,
+  "capture_backlog_hard_limit": 90000,
+  "event_capacity": 10000,
+  "production": false
+}

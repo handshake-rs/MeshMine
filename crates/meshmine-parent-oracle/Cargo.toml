@@ -1,0 +1,15 @@
+[package]
+name = "meshmine-parent-oracle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Fail-closed local live HNS parent qualification for MeshMine Core"
+
+[dependencies]
+hex.workspace = true
+meshmine-share = { path = "../meshmine-share" }
+meshmine-types = { path = "../meshmine-types" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

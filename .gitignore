@@ -1,5 +1,12 @@
 /target/
+/hsrd/target/
+/hsrd/fuzz/target/
+/hsrd/fuzz/corpus/
+/hsrd/fuzz/artifacts/
+/hsrd/fuzz/coverage/
 /hsd-oracle/node_modules/
+__pycache__/
+*.py[cod]
 /states/
 *.log
 *.redb

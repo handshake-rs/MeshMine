@@ -15,10 +15,20 @@
     "regtest": "node regtest-driver.js",
     "validate-body": "node validate-body.js",
     "vectors": "node generate-vectors.js --count 10000",
-    "hsrd-phase2-fixtures": "node generate-hsrd-phase2-fixtures.js --check",
-    "generate-hsrd-phase2-fixtures": "node generate-hsrd-phase2-fixtures.js --write --check",
-    "hsrd-phase3-fixtures": "node generate-hsrd-phase3-fixtures.js --check",
-    "generate-hsrd-phase3-fixtures": "node generate-hsrd-phase3-fixtures.js --write --check"
+    "hsrd-script-fixtures": "node generate-hsrd-script-fixtures.js --check",
+    "generate-hsrd-script-fixtures": "node generate-hsrd-script-fixtures.js --write --check",
+    "hsrd-covenant-fixtures": "node generate-hsrd-covenant-fixtures.js --check",
+    "generate-hsrd-covenant-fixtures": "node generate-hsrd-covenant-fixtures.js --write --check",
+    "hsrd-name-state-codec-fixtures": "node generate-hsrd-name-state-codec-fixtures.js --check",
+    "generate-hsrd-name-state-codec-fixtures": "node generate-hsrd-name-state-codec-fixtures.js --write --check",
+    "hsrd-name-state-urkel-fixtures": "node generate-hsrd-name-state-urkel-fixtures.js --check",
+    "generate-hsrd-name-state-urkel-fixtures": "node generate-hsrd-name-state-urkel-fixtures.js --write --check",
+    "hsrd-name-policy-fixtures": "node generate-hsrd-name-policy-fixtures.js --check",
+    "generate-hsrd-name-policy-fixtures": "node generate-hsrd-name-policy-fixtures.js --write --check",
+    "hsrd-p2p-wire-fixtures": "node generate-hsrd-p2p-wire-fixtures.js --check",
+    "generate-hsrd-p2p-wire-fixtures": "node generate-hsrd-p2p-wire-fixtures.js --write --check",
+    "hsrd-mining-template-fixtures": "node generate-hsrd-mining-template-fixtures.js --check",
+    "generate-hsrd-mining-template-fixtures": "node generate-hsrd-mining-template-fixtures.js --write --check"
   },
   "devDependencies": {
     "hsd": "github:handshake-org/hsd#698e252ebc7b5c1dd0a9587e342fdd153d020ae4"

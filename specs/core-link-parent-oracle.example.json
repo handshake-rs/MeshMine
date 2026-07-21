@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "network_id": 2,
+  "minimum_confirmations": 1,
+  "maximum_certificate_depth": 12,
+  "maximum_tip_lag_blocks": 2,
+  "maximum_header_age_ms": 21600000,
+  "cache_ttl_ms": 1000,
+  "require_hsrd_match": false,
+  "hsd": {
+    "label": "local-hsd-authority",
+    "address": "127.0.0.1:12037",
+    "path": "/",
+    "authorization_header_file": "/home/operator/.config/meshmine/hsd-authorization-header",
+    "connect_timeout_ms": 1000,
+    "read_timeout_ms": 3000,
+    "write_timeout_ms": 3000,
+    "maximum_response_bytes": 1048576
+  },
+  "hsrd": {
+    "label": "local-hsrd-shadow",
+    "address": "127.0.0.1:14037",
+    "path": "/",
+    "authorization_header_file": null,
+    "connect_timeout_ms": 1000,
+    "read_timeout_ms": 3000,
+    "write_timeout_ms": 3000,
+    "maximum_response_bytes": 1048576
+  }
+}

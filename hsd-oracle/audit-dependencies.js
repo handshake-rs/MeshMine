@@ -4,6 +4,8 @@
 const assert = require('assert');
 const {spawnSync} = require('child_process');
 
+const allowUnavailable = process.argv.includes('--allow-unavailable');
+
 const result = spawnSync(
   'npm',
   ['audit', '--audit-level=moderate', '--json'],
@@ -11,12 +13,21 @@ const result = spawnSync(
     cwd: __dirname,
     encoding: 'utf8',
     maxBuffer: 4 * 1024 * 1024,
+    timeout: 15_000,
     stdio: ['ignore', 'pipe', 'pipe']
   }
 );
 
-if (result.error)
+if (result.error) {
+  if (allowUnavailable && result.error.code === 'ETIMEDOUT') {
+    console.warn(
+      'npm dependency advisory service timed out; the offline source-handoff ' +
+      'gate did not perform an advisory audit'
+    );
+    process.exit(0);
+  }
   throw result.error;
+}
 
 let report;
 try {
@@ -26,7 +37,21 @@ try {
   throw new Error(`npm audit did not return bounded JSON: ${detail}`, {cause: error});
 }
 
-assert.strictEqual(report.auditReportVersion, 2);
+if (report.auditReportVersion !== 2) {
+  const statusCode = Number(report.statusCode);
+  const unavailable = Number.isInteger(statusCode)
+    && (statusCode === 408 || statusCode === 429 || statusCode >= 500);
+
+  if (allowUnavailable && unavailable && result.status !== 0) {
+    console.warn(
+      `npm dependency advisory service unavailable (HTTP ${statusCode}); ` +
+      'the offline source-handoff gate did not perform an advisory audit'
+    );
+    process.exit(0);
+  }
+
+  assert.strictEqual(report.auditReportVersion, 2);
+}
 const vulnerabilities = report.vulnerabilities || {};
 const names = Object.keys(vulnerabilities).sort();
 

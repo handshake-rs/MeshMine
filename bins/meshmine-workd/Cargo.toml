@@ -1,0 +1,12 @@
+[package]
+name = "meshmine-workd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Reference local MeshMine work coordinator service"
+
+[dependencies]
+hex.workspace = true
+meshmine-storage = { path = "../../crates/meshmine-storage" }
+meshmine-work = { path = "../../crates/meshmine-work" }

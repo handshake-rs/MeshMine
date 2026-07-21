@@ -88,16 +88,17 @@ difficulty. An optional `previous_job_transition` is a trusted local assertion
 of the active job's certified cutoff and grace window, not a certificate that
 this executable verifies.
 
-The executable is not yet the continuous production gateway. Accepted captures
-are durably retained by the library, but this process only reports their count:
-it does not deliver them to the share-admission path or invoke
-`acknowledge_capture` after durable downstream admission. Consequently a job
-with any capture cannot retire, repeated captures eventually reach the durable
-capacity limit, and the process stops on that fatal condition. The listener
-also serves connections sequentially and exits after its configured lifetime
-connection count. A supervised downstream consumer with at-least-once replay,
-durable admission acknowledgment, concurrent connection/job transition
-handling, and restart tests is a release blocker.
+The standalone `meshmine-gateway` executable remains a bounded protocol
+harness. `meshmine-corelink-operatord` is the integrated local
+operator path: it exchanges exact signed assignment bundles and captures with
+`meshmine-cored` over a private Unix-domain connection authenticated by Linux
+peer credentials and pinned Ed25519 identities; Core constructs exact `ShareV2`
+objects and returns durable signed terminal receipts. The Core daemon performs
+bounded live loopback HSD parent qualification with optional or required HSRD
+shadow agreement, while the operator composes concurrent sessions, reconnect
+backoff, fallback hysteresis, assignment draining, the event journal, the
+read-only dashboard, and graceful shutdown. Physical hardware qualification is
+still absent, so the complete path remains pre-production.
 
 The RPC password comparison has a fixed bounded loop. After eight failed
 `mining.authorize` attempts the final negative response is sent and that TCP
@@ -108,53 +109,68 @@ shared by multiple gateway processes; the loopback-only listener therefore
 still relies on host isolation and is not a production principal/rate-limit
 service.
 
-## Audited gateway-to-Core boundary gaps
+## Gateway-to-Core boundary status
 
-The durable `ForwardedCapture` is not a `ShareV2`, and there is currently no
-safe mechanical conversion between them:
+The integrated path closes the source-level mechanical and local-authority gaps that separated a
+durable `ForwardedCapture` from Core admission:
 
-- HandyStratum submissions carry a miner-selected four-byte `ExtraNonce2`.
-  The gateway constructs the HNS 24-byte extra nonce as
-  `nonce_prefix[4] || ExtraNonce2[4] || zero[16]`, so different submissions for
-  one job can have different values. In contrast, an operator-signed
-  `AssignmentV2` commits one exact 24-byte `extra_nonce`, and Core share
-  validation requires `ShareV2.extra_nonce == AssignmentV2.extra_nonce`.
-  Manufacturing an assignment after seeing a capture would not prove that the
-  work was assigned before mining. Production must either constrain/allocate
-  `ExtraNonce2` before work, issue an authenticated assignment for each allowed
-  value, or adopt an independently reviewed versioned protocol change.
-- The gateway job file contains the HNS header roots, target, mask hash, and
-  local schedule, but not the authenticated Core context needed to construct
-  and verify a share: the exact signed assignment and its ID, session, body
-  package/certificate, payout bucket, operator identity/signatures, and
-  committee context. `share-context-import` is an operator-mediated file
-  boundary; `AssignmentV2` is not a native `GossipTopic` or `RequestProtocol`.
-  The gateway must not infer those links from similar-looking header fields.
-- `ForwardedCapture.received_ms` is durable local gateway evidence, while Core
-  admission uses a participant-local first-observation time and requires it to
-  be inside the certified submission window. A delayed consumer can therefore
-  replay a capture that was timely at the gateway only after it has become too
-  late at Core. No signed/canonical boundary currently authorizes Core to trust
-  the gateway timestamp; that observation trust and replay rule must be
-  specified rather than silently replacing Core's local clock.
-- A transition grace capture can be retained with `credit_eligible=false`, but
-  `ShareV2` has no non-credit disposition and an admitted active share normally
-  enters receipt accounting. Production must define whether such a capture is
-  rejected-and-tombstoned, retained as authenticated telemetry, or represented
-  by a versioned non-credit protocol object. It must not be admitted as an
-  ordinary credited share merely to clear the gateway queue.
-- Gateway and Core work identities use different domain-separated hashes. A
-  consumer therefore needs an immutable, exact gateway-work-key to `ShareV2`
-  ID/Core-work-key mapping. That mapping and successful Core admission (or an
-  explicitly specified durable non-credit disposition) must commit before
-  `acknowledge_capture`; a file export, attempted send, or volatile response is
-  not an acknowledgment. Recovery must replay the same mapping and tolerate a
-  crash after Core admission but before the gateway tombstone is written.
+- `CoreAssignmentBundleV1` carries the exact signed context manifest,
+  `GatewayAssignmentV1`, mask session, parent certificate, body and body
+  certificate, payout bucket, committee rosters, and Handy difficulty. The
+  gateway job is derived from this bundle rather than inferred from similar
+  header fields.
+- The signed gateway assignment authorizes a Handy
+  `prefix4 || ExtraNonce2[4] || zero16` range before mining. The operator
+  envelope binds the actual selected `ExtraNonce2`, nTime, nonce, raw share
+  hash, gateway sequence, connection, and signed observation time.
+- The assignment's observation policy selects Core receipt time or bounded
+  delegated gateway time. Core applies that policy while constructing the exact
+  accepted share.
+- Core constructs `ShareV2` itself, setting `local_telemetry_hash` to the exact
+  capture-envelope ID. It does not trust a gateway-supplied share ID.
+- Accepted and terminal noncredit outcomes use the existing atomic Core handoff
+  journal. A terminal signed receipt is durable before the operator removes its
+  pending envelope or the gateway compacts its original capture.
+- The stable gateway work key retrieves an existing receipt after restart, so a
+  crash after Core admission cannot allocate a second gateway sequence for the
+  same physical submission.
+- Signed replacement, drain, and transition objects fence captures across
+  assignment boundaries. The old durable job remains present until the final
+  drain and next assignment have been accepted.
 
-A bounded **ACK-only reconciler** is achievable for captures whose exact mapping
-and downstream admission already exist: it can verify that immutable evidence
-and idempotently call `acknowledge_capture` after a crash. It cannot turn the
-current executable into a continuous production gateway, construct missing
-Core context, resolve the `ExtraNonce2`/assignment conflict, assign non-credit
-semantics, or authenticate `received_ms`. Those are protocol and service
-composition gates, not reconciler implementation details.
+The local transport is a private Unix-domain socket with Linux `SO_PEERCRED`, an
+expected UID, pinned mutual Ed25519 challenge authentication, bounded frame size
+and timeouts, monotonic directional sequence numbers, and checksummed frames.
+
+The remaining boundary gaps are operational and qualification gates rather than
+an invitation to infer missing context:
+
+- compile and fault-test every live-parent disagreement, crash point,
+  spool-capacity boundary, socket failure, reconnect, and partial transition on
+  the target platforms;
+- obtain exact physical Goldshell/HS3 job, target, capture, reconnect, fallback,
+  stale-work, and drain evidence; and
+- independently review and freeze the bundle, transport, receipt, and
+  transition state machines.
+
+These remaining gates keep production eligibility false.
+
+## Local work leases
+
+The portable work fabric does not reinterpret `GatewayAssignmentV1`. The signed
+gateway assignment remains the maximum authorized envelope. A canonical local
+`WorkLease` may divide its ExtraNonce2 interval among physical devices, but may
+not expand the signed prefix, ExtraNonce2, nonce, stride, nTime, capture-target,
+or worker bounds.
+
+For the Handy profile, local allocation is performed over disjoint
+`ExtraNonce2` intervals. Stock devices retain the complete signed nonce range
+unless physical evidence proves that narrower nonce controls are honored. A
+stock ASIC disconnect is not evidence of exhaustive traversal, and its namespace
+cursor is not rewound or reused automatically.
+
+The gateway's lease-aware submission path verifies the local device identity,
+canonical lease ID, expiration, ExtraNonce2 bounds, nonce range and stride, and
+signed target bounds before invoking the existing signed-assignment submission
+path. Gateway capture compaction occurs only after an idempotent downstream
+consumer reports durable admission.

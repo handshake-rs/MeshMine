@@ -1,0 +1,20 @@
+[package]
+name = "meshmine-work"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Portable durable work coordination and mining backend abstraction for MeshMine"
+
+[dependencies]
+hex.workspace = true
+meshmine-codec = { path = "../meshmine-codec" }
+meshmine-hns = { path = "../meshmine-hns" }
+meshmine-storage = { path = "../meshmine-storage" }
+meshmine-types = { path = "../meshmine-types" }
+num-bigint.workspace = true
+num-traits.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.20.0"

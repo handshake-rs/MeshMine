@@ -29,6 +29,16 @@ jobs:
       - run: npm ci --prefix hsd-oracle --ignore-scripts
       - run: npm run audit --prefix hsd-oracle
       - run: bash -n scripts/production-hsd-preflight.sh
+      - name: Validate portable work-fabric source handoff
+        run: python3 scripts/validate-work-fabric-source.py
+      - name: Validate operator-service source handoff
+        run: python3 scripts/validate-operator-service-source.py
+      - name: Validate authenticated Core-link source handoff
+        run: python3 scripts/validate-core-link-source.py
+      - name: Validate live-parent and unified-supervisor handoff
+        run: python3 scripts/validate-live-parent-and-unified-operator-source.py
+      - name: Verify the signed Core receipt fixture
+        run: NODE_BACKEND=js node scripts/verify-operator-receipt-fixture.js
       - run: cargo fmt --all --check
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --locked --workspace --all-targets --all-features
@@ -41,8 +51,8 @@ jobs:
       - run: NODE_BACKEND=js node hsd-oracle/payout-driver.js
       - run: cargo run --locked --quiet -p meshmine-sim -- overlay 1000 --output /tmp/meshmine-overlay.json --explorer /tmp/meshmine-overlay.html
       - run: NODE_BACKEND=js node hsd-oracle/verify-overlay-transcript.js /tmp/meshmine-overlay.json
-      - run: cargo run --locked --release -p meshmine-share --bin performance_gate
-      - run: cargo run --locked --release -p meshmine-settlement --bin performance_gate
+      - run: cargo run --locked --release -p meshmine-share --bin share_performance_gate
+      - run: cargo run --locked --release -p meshmine-settlement --bin settlement_performance_gate
 
   hsrd-verify:
     runs-on: ubuntu-24.04
@@ -58,20 +68,42 @@ jobs:
         run: npm ci --prefix hsd-oracle --ignore-scripts
       - name: Validate hsrd metadata, fixtures, and authority invariants
         run: python3 scripts/validate-hsrd-static.py
-      - name: Reproduce Phase 2 HSD fixtures
-        run: npm run hsrd-phase2-fixtures --prefix hsd-oracle
-      - name: Reproduce Phase 3 HSD fixtures
-        run: npm run hsrd-phase3-fixtures --prefix hsd-oracle
+      - name: Validate hsrd source handoff structure
+        run: python3 scripts/validate-hsrd-source-handoff.py
+      - name: Validate hsrd handoff script syntax
+        run: bash -n scripts/verify-hsrd-source-handoff.sh
+      - name: Reproduce HSD script fixtures
+        run: npm run hsrd-script-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD covenant fixtures
+        run: npm run hsrd-covenant-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD NameState codec fixtures
+        run: npm run hsrd-name-state-codec-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD name-state and Urkel fixtures
+        run: npm run hsrd-name-state-urkel-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD name-policy fixtures
+        run: npm run hsrd-name-policy-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD P2P wire fixtures
+        run: npm run hsrd-p2p-wire-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD mining-template fixtures
+        run: npm run hsrd-mining-template-fixtures --prefix hsd-oracle
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang libclang-dev
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang libclang-dev
+      - name: Smoke-test the pinned vendored libsecp256k1 revision
+        run: scripts/verify-hsrd-secp256k1.sh
       - name: Install declared Rust toolchain
         run: rustup toolchain install 1.89.0 --profile minimal --component rustfmt,clippy
       - name: Select declared Rust toolchain
         run: rustup default 1.89.0
       - name: Verify committed hsrd dependency graph
         run: cargo metadata --locked --manifest-path hsrd/Cargo.toml --format-version 1 > /dev/null
+      - name: Verify committed hsrd fuzz dependency graph
+        run: cargo metadata --locked --manifest-path hsrd/fuzz/Cargo.toml --format-version 1 > /dev/null
       - name: Verify hsrd formatting
         run: cargo fmt --manifest-path hsrd/Cargo.toml --all --check
+      - name: Verify hsrd fuzz formatting
+        run: cargo fmt --manifest-path hsrd/fuzz/Cargo.toml --all --check
+      - name: Compile every hsrd fuzz target
+        run: cargo check --locked --manifest-path hsrd/fuzz/Cargo.toml --all-targets
       - name: Lint the complete hsrd workspace
         run: cargo clippy --locked --manifest-path hsrd/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - name: Test the complete hsrd workspace
@@ -96,3 +128,5 @@ jobs:
         run: cargo audit
       - name: Audit locked hsrd dependencies
         run: cd hsrd && cargo audit
+      - name: Audit locked hsrd fuzz dependencies
+        run: cd hsrd/fuzz && cargo audit

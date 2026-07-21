@@ -2,7 +2,7 @@
 
 HNS MeshMine is a research implementation of the no-hard-fork, independently templated Handshake mining overlay specified by [MM-0001 Core v2](MeshMine.md). It preserves ordinary HNS consensus. Current qualification paths construct and check candidates through unmodified `hsd`; the lean native Rust mining full node in [`hsrd`](hsrd/README.md) remains pre-authority until historical, invalid-corpus, reorg, state-root, and live-shadow parity gates pass.
 
-The local reference implementation contains staged components for WP1–WP13 and a deterministic local WP14 fault harness; the acceptance gaps are listed below rather than treated as completed work. It is not production-ready. The default simulation MPC backend uses a trusted coordinator; a separate artifact-pinned distributed MP-SPDZ research adapter passes WP7 locally but is not integrated into a production daemon or independently audited. Goldshell/HS3 behavior has not been physically verified, the overlay harness is not a public multi-operator deployment, and the object graph has not received independent protocol review.
+The local reference implementation integrates components for WP1–WP13 and a deterministic local WP14 fault harness; the acceptance gaps are listed below rather than treated as completed work. It is not production-ready. The default simulation MPC backend uses a trusted coordinator; a separate artifact-pinned distributed MP-SPDZ research adapter passes WP7 locally but is not integrated into a production daemon or independently audited. Goldshell/HS3 behavior has not been physically verified, the overlay harness is not a public multi-operator deployment, and the object graph has not received independent protocol review.
 
 ## What is implemented
 
@@ -15,8 +15,10 @@ The local reference implementation contains staged components for WP1–WP13 and
 | Shares and receipts | exact validation, mandatory local-parent oracle, DAG reconciliation, `work_key` deduplication, receipt fault proofs, and an independently validated/durably guarded static receipt proposal-sign-assemble workflow |
 | Mask protocol | durable trusted-setup simulation backend plus an artifact-allowlisted distributed MP-SPDZ setup: inside-MPC constrained randomness/rejection sampling, exact 209,858-gate BLAKE2b, per-member private Shamir output, durable signed commitments, restart-safe threshold opening, a real three-party MASCOT/Tinier run, and 10,000 HNS hash differentials; `production_eligible` remains false |
 | Settlement | complete-session PPLNS snapshots with minimal-suffix retention, a canonical source-fenced recovery checkpoint and monotonic durable head, delayed entropy, unbiased 512-bit tickets, bounded service-credit library arithmetic, exact coinbase layout/reorg rollback, and a strict work-only single-lane static proposal-sign-assemble workflow |
-| Gateway | bounded loopback-only HandyStratum HNS adapter plus domain-separated operator/gateway/Core handoff objects, signed capture/disposition/drain evidence, gap-free sequence fencing, and atomic evidence/share/work admission; continuous service composition and hardware profiles remain unverified |
-| Native mining node | lean `hsrd` workspace with product bloat removed, exact HNS network/genesis parameters, derived unsigned 256-bit chainwork, HNS difficulty/timestamp admission, durable granular validation stages, sequence-consistent RocksDB snapshots, validated alternate-block retention, separate best-header/active-block bindings, strict greater-work fork choice, one-batch multi-block reorganization activation, HSD-compatible sighash/relative-lock primitives, a fail-closed witness/script foundation, exact non-coinbase covenant linkage, durable mining generations, immutable prepared jobs, and an in-process snapshot/body/assignment-to-gateway bridge; complete script authority, contextual name consensus, claims/airdrops, Urkel, live P2P, templates/relay, historical reorg parity, and shadow evidence remain open |
+| Gateway | bounded loopback-only HandyStratum HNS adapter plus domain-separated operator/gateway/Core handoff objects, signed capture/disposition/drain evidence, gap-free sequence fencing, atomic evidence/share/work admission, and a live-parent-qualified authenticated Core stream under the unified local supervisor; hardware profiles remain unverified |
+| Heterogeneous work fabric | portable durable `meshmine-work` planner with capability discovery, non-overlapping ExtraNonce2 or nonce leases, generation-based prepare/activate/cancel, exact scalar HNS capture verification, stable capture deduplication, durable downstream admission, bounded adaptive edge targets, and HandyStratum/simulator backend boundaries; architecture-specific hash kernels remain optional |
+| Operator service and UI | `meshmine-corelink-operatord` combines concurrent loopback HandyStratum sessions, exact signed Core bundle import, Core-side `ShareV2` construction, durable terminal receipts, signed drains, Core reconnect backoff, deterministic safe modes and fallback hysteresis, trust-bound storage, bounded event history, graceful shutdown, read-only health/status API, and the embedded responsive dashboard; production hardware qualification remains open |
+| Native mining node | lean `hsrd` workspace with exact HNS network/genesis parameters, unsigned 256-bit chainwork, difficulty/timestamp admission, native pinned secp256k1 verification, bounded witness/script foundations, covenant linkage, contextual non-claim name transitions, exact HSD `NameState` encoding, correctness-first Urkel roots, durable pre/post root binding, sequence-consistent RocksDB snapshots, alternate-branch retention, strict greater-work fork choice, one-batch reorganizations, exact bounded HNS wire codecs, live observation-only peers, headers-first scheduling, stateless body workers, non-active body retention, restart checkpoints, a bounded generation-indexed mempool, deterministic HNS-aware future templates, durable solved-block publication intents, and local-first parallel critical fan-out. The unified operator can use its RPC surface as an optional shadow witness while HSD remains authoritative; claims/airdrops, complete historical consensus parity, persistent production Urkel, active-state IBD, production contextual transaction admission, and native mainnet authority remain open |
 | Committees | exact risk calculator, role-separated delayed sortition, bootstrap phases, roster verification, fault exclusion and liveness replacement |
 | Networking and storage | native authenticated QUIC streams with separately reserved fast-path, accounting, availability, and settlement callback, live-queue, replay, and per-peer send capacity; bounded static peers with TLS/transport-key pins and staged certificate rotation, reconnect-supervised signed gossip with bounded durable at-least-once catch-up, exact-wrapper publication-intent recovery, atomic settled-prefix compaction and source suppression, request quotas, exact share ingress with local-`hsd` context evidence, one-transaction share/work/observation/active-index admission, guarded MaskSession inventory generation, one-transaction canonical Disconnect/MMDB/parent/session/head/index effects, source-bound normal/reorg session closure, bounded active-share and open-receipt restart recovery with resumable fail-closed legacy migrations, partition harness, clock policy, immutable redb journal and crash-safe signing guards |
 | Observability | bounded schema-v3 JSON evidence for durable work/template/body/payout/reorg/telemetry distributions and static-peer delivery capacity/backlog/intent/migration/compaction/tombstone state, explicit per-metric coverage and unavailable-evidence labels |
@@ -30,12 +32,26 @@ Detailed claim boundaries and gaps are in [implementation-status.md](specs/imple
 
 Requirements are Rust 1.89+, Node.js, and either the pinned oracle dependency or an `hsd` checkout. The oracle package pins `hsd` commit `698e252ebc7b5c1dd0a9587e342fdd153d020ae4`.
 
+The latest complete local gate results and qualification boundary are recorded
+in [VERIFICATION.md](VERIFICATION.md).
+
 ```sh
 npm ci --prefix hsd-oracle --ignore-scripts
 npm run audit --prefix hsd-oracle
 python3 scripts/validate-hsrd-static.py
-npm run hsrd-phase2-fixtures --prefix hsd-oracle
-npm run hsrd-phase3-fixtures --prefix hsd-oracle
+python3 scripts/validate-hsrd-source-handoff.py
+python3 scripts/validate-work-fabric-source.py
+python3 scripts/validate-operator-service-source.py
+python3 scripts/validate-core-link-source.py
+python3 scripts/validate-live-parent-and-unified-operator-source.py
+NODE_BACKEND=js node scripts/verify-operator-receipt-fixture.js
+npm run hsrd-script-fixtures --prefix hsd-oracle
+npm run hsrd-covenant-fixtures --prefix hsd-oracle
+npm run hsrd-name-state-codec-fixtures --prefix hsd-oracle
+npm run hsrd-name-state-urkel-fixtures --prefix hsd-oracle
+npm run hsrd-name-policy-fixtures --prefix hsd-oracle
+npm run hsrd-p2p-wire-fixtures --prefix hsd-oracle
+npm run hsrd-mining-template-fixtures --prefix hsd-oracle
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-targets --all-features --locked
@@ -49,6 +65,38 @@ NODE_BACKEND=js node hsd-oracle/payout-driver.js
 cargo run --locked --quiet -p meshmine-sim -- overlay 1000 \
   --output /tmp/meshmine-overlay.json --explorer /tmp/meshmine-overlay.html
 NODE_BACKEND=js node hsd-oracle/verify-overlay-transcript.js /tmp/meshmine-overlay.json
+```
+
+The local work database can be initialized and inspected independently:
+
+```sh
+cargo run --locked -p meshmine-workd -- init /path/to/work.redb
+cargo run --locked -p meshmine-workd -- status /path/to/work.redb
+```
+
+The work-fabric design, authorization hierarchy, allocation rules, and current
+limitations are documented in [work-fabric.md](docs/work-fabric.md). The
+unified operator service, safe modes, Core reconnect/fallback behavior, and local
+dashboard are documented in [operator-service.md](docs/operator-service.md).
+The authenticated Core stream and live parent qualification are documented in
+[core-link.md](docs/core-link.md) and
+[live-parent-and-unified-operator.md](docs/live-parent-and-unified-operator.md).
+
+The standalone operator service can be started from a strict local configuration after the
+referenced job and password files have been prepared:
+
+```sh
+cargo run --locked -p meshmine-operatord -- serve \
+  --config /absolute/path/operator-service.json
+```
+
+The dashboard is then served only on the configured loopback address. Canonical
+Core receipts are imported only after external Core admission:
+
+```sh
+cargo run --locked -p meshmine-operatord -- import-core-receipt \
+  --config /absolute/path/operator-service.json \
+  --receipt /absolute/path/core-receipt.json
 ```
 
 An optional external MPC conformance run can be checked after compiling and
@@ -73,8 +121,8 @@ implementation diversity and an externally maintained verifier, are in
 Performance checks must use release builds:
 
 ```sh
-cargo run --locked --release -p meshmine-share --bin performance_gate
-cargo run --locked --release -p meshmine-settlement --bin performance_gate
+cargo run --locked --release -p meshmine-share --bin share_performance_gate
+cargo run --locked --release -p meshmine-settlement --bin settlement_performance_gate
 ```
 
 TLC instructions and checked state counts are in [models/README.md](models/README.md).
@@ -207,12 +255,33 @@ cargo run --locked -p meshmine-gateway-bin --bin meshmine-gateway -- serve \
 The password file must be a regular, non-symlink UTF-8 file containing one
 line and, on Unix, must have no group/other permissions (for example mode
 `0600`). The standalone gateway binary remains a bounded protocol harness rather
-than the continuous production mining path. The separate authenticated handoff
-library now defines and tests exact signed assignment, capture, disposition,
-transition, drain, observation-time, and atomic Core admission boundaries, but
-the binary and Core service are not yet continuously composed. See
-[gateway-core-handoff.md](specs/gateway-core-handoff.md) and
-[asic-profiles.md](specs/asic-profiles.md).
+than the continuous production mining path.
+
+The unified operator retains the private authenticated Core link and adds
+bounded live local HSD active-chain qualification with a current-tip gate for
+served jobs, optional or required HSRD shadow agreement, periodic
+requalification, Core reconnect backoff, concurrent local sessions, safe-mode
+fallback, signed ACK-only receipt reconciliation, the supervisor/dashboard,
+and bounded graceful shutdown. The path remains pre-production and local only:
+
+```sh
+# Stage one exact signed assignment bundle, then start local Core service.
+cargo run --locked -p meshmine-cored -- stage-bundle \
+  --config /absolute/path/core-link-core-v9.json \
+  --bundle /absolute/path/assignment-bundle.bin
+cargo run --locked -p meshmine-cored -- serve \
+  --config /absolute/path/core-link-core-v9.json
+
+# Connect the local operator gateway to Core and serve HandyStratum ASICs.
+cargo run --locked -p meshmine-corelink-operatord -- serve \
+  --config /absolute/path/core-link-operator-v9.json
+```
+
+Example configurations are in `specs/core-link-*.example.json`. See
+[core-link.md](docs/core-link.md),
+[gateway-core-handoff.md](specs/gateway-core-handoff.md), and
+[asic-profiles.md](specs/asic-profiles.md). Native mainnet authority and
+production eligibility remain disabled.
 
 ### Offline active-receipt migration
 

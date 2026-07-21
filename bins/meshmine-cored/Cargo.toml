@@ -1,0 +1,21 @@
+[package]
+name = "meshmine-cored"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Authenticated local MeshMine Core assignment and capture service"
+
+[dependencies]
+ed25519-dalek.workspace = true
+hex.workspace = true
+libc.workspace = true
+meshmine-codec = { path = "../../crates/meshmine-codec" }
+meshmine-core-link = { path = "../../crates/meshmine-core-link" }
+meshmine-parent-oracle = { path = "../../crates/meshmine-parent-oracle" }
+meshmine-crypto = { path = "../../crates/meshmine-crypto" }
+meshmine-share = { path = "../../crates/meshmine-share" }
+meshmine-storage = { path = "../../crates/meshmine-storage" }
+meshmine-types = { path = "../../crates/meshmine-types" }
+serde.workspace = true
+serde_json.workspace = true

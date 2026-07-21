@@ -4,8 +4,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Write};
-use std::net::TcpStream;
-use std::sync::{Arc, OnceLock};
+use std::net::{Shutdown, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use meshmine_handoff::{GatewayContextManifestV1, validate_gateway_assignment};
@@ -18,6 +19,7 @@ use meshmine_types::{
     BlockBodyPackageV2, BodyAvailabilityCertificateV2, BodyErasureDescriptorV2,
     GatewayAssignmentV1, MaskSessionV2, UnsignedObject, domain_hash,
 };
+use meshmine_work::{WorkLease, gateway_extra_nonce};
 use num_bigint::BigUint;
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -179,6 +181,24 @@ impl ForwardedCapture {
     }
 }
 
+/// Downstream Core/share admission boundary. Implementations must return only
+/// after the forwarded capture (or its canonical derived share) is durable.
+/// A successful return authorizes the gateway to compact its local payload;
+/// failures leave the capture pending for at-least-once retry.
+pub trait DurableCaptureConsumer {
+    /// Return only after the capture is durable downstream. Implementations
+    /// must be idempotent by `ForwardedCapture::work_key`: a process can crash
+    /// after downstream commit and before the local gateway tombstone commits.
+    fn admit_capture(&mut self, capture: &ForwardedCapture) -> Result<Hash256, String>;
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CaptureDrainReport {
+    pub attempted: usize,
+    pub acknowledged: usize,
+    pub last_downstream_id: Option<Hash256>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GatewayEvent {
     JobIssued {
@@ -210,6 +230,112 @@ pub struct FailoverPool {
     active: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GatewayStatus {
+    pub current_job_id: Option<String>,
+    pub current_assignment_sequence: Option<u64>,
+    pub current_issued_ms: Option<u64>,
+    pub current_assignment_end_ms: Option<u64>,
+    pub current_submission_end_ms: Option<u64>,
+    pub retained_jobs: usize,
+    pub pending_captures: usize,
+    pub retiring_assignments: usize,
+    pub queued_events: usize,
+    pub dropped_events: u64,
+}
+
+/// Process-wide controls shared by concurrent local HandyStratum sessions.
+/// The controls never authorize work: they only stop or drain already-bound
+/// local sessions when the operator service enters fallback or shutdown.
+pub struct SharedRpcControl {
+    shutdown: AtomicBool,
+    fallback: AtomicBool,
+    active_connections: AtomicUsize,
+    authorization_failures: AtomicU16,
+    connection_epoch: AtomicU64,
+    maximum_authorization_failures: u16,
+}
+
+impl SharedRpcControl {
+    pub fn new(maximum_authorization_failures: u16) -> Result<Self, GatewayError> {
+        if maximum_authorization_failures == 0 {
+            return Err(GatewayError::InvalidRpcControl);
+        }
+        Ok(Self {
+            shutdown: AtomicBool::new(false),
+            fallback: AtomicBool::new(false),
+            active_connections: AtomicUsize::new(0),
+            authorization_failures: AtomicU16::new(0),
+            connection_epoch: AtomicU64::new(0),
+            maximum_authorization_failures,
+        })
+    }
+
+    pub fn request_shutdown(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+    }
+
+    pub fn set_fallback(&self, enabled: bool) {
+        self.fallback.store(enabled, Ordering::SeqCst);
+    }
+
+    pub fn shutdown_requested(&self) -> bool {
+        self.shutdown.load(Ordering::SeqCst)
+    }
+
+    pub fn fallback_active(&self) -> bool {
+        self.fallback.load(Ordering::SeqCst)
+    }
+
+    pub fn active_connections(&self) -> usize {
+        self.active_connections.load(Ordering::SeqCst)
+    }
+
+    pub fn authorization_failures(&self) -> u16 {
+        self.authorization_failures.load(Ordering::SeqCst)
+    }
+
+    pub fn connection_epoch(&self) -> u64 {
+        self.connection_epoch.load(Ordering::SeqCst)
+    }
+
+    /// Force existing sessions to reconnect after an assignment-prefix or
+    /// authentication context change. New connections observe the incremented
+    /// epoch and receive the new prefix during subscription.
+    pub fn rotate_connections(&self) -> u64 {
+        self.connection_epoch
+            .fetch_add(1, Ordering::SeqCst)
+            .saturating_add(1)
+    }
+
+    fn enter_connection(&self) {
+        self.active_connections.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn leave_connection(&self) {
+        self.active_connections.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    fn add_authorization_failures(&self, failures: u8) -> Result<(), GatewayError> {
+        if failures == 0 {
+            return Ok(());
+        }
+        let increment = u16::from(failures);
+        let previous = self
+            .authorization_failures
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                Some(current.saturating_add(increment))
+            })
+            .unwrap_or_else(|current| current);
+        let total = previous.saturating_add(increment);
+        if total >= self.maximum_authorization_failures {
+            self.set_fallback(true);
+            return Err(GatewayError::AuthorizationFailureLimit);
+        }
+        Ok(())
+    }
+}
+
 pub struct Gateway {
     store: Arc<dyn DurableStore>,
     jobs: HashMap<String, (GatewayJob, JobState)>,
@@ -237,6 +363,13 @@ pub struct RpcSession {
     subscribed: bool,
     authorization_failures: u8,
     profile: DeviceProfile,
+    assignment_authorization: Option<RpcAssignmentAuthorization>,
+}
+
+#[derive(Clone, Debug)]
+struct RpcAssignmentAuthorization {
+    worker_id_hash: Hash256,
+    assignment: GatewayAssignmentV1,
 }
 
 impl fmt::Debug for RpcSession {
@@ -251,6 +384,13 @@ impl fmt::Debug for RpcSession {
             .field("subscribed", &self.subscribed)
             .field("authorization_failures", &self.authorization_failures)
             .field("profile", &self.profile)
+            .field(
+                "assignment_sequence",
+                &self
+                    .assignment_authorization
+                    .as_ref()
+                    .map(|authorization| authorization.assignment.assignment_sequence),
+            )
             .finish()
     }
 }
@@ -271,6 +411,8 @@ pub enum GatewayError {
     InvalidDurableState,
     #[error("capture is not pending and has no durable acknowledgment")]
     CaptureNotFound,
+    #[error("durable downstream capture consumer is unavailable")]
+    CaptureConsumerUnavailable,
     #[error("durable capture/tombstone capacity is exhausted")]
     CaptureCapacity,
     #[error("job identifier is invalid or already exists")]
@@ -309,6 +451,12 @@ pub enum GatewayError {
     EmptyFailover,
     #[error("RPC transaction response exceeds its configured bound")]
     RpcResponseTooLarge,
+    #[error("shared RPC control configuration is invalid")]
+    InvalidRpcControl,
+    #[error("process-wide authorization failure limit reached")]
+    AuthorizationFailureLimit,
+    #[error("shared gateway state lock was poisoned")]
+    GatewayLockPoisoned,
 }
 
 #[derive(Debug, Error)]
@@ -1439,6 +1587,7 @@ impl Gateway {
                     || offset % assignment.nonce_stride != 0
             })
             || u64::from(submission.ntime) != assignment.ntime
+            || telemetry_level as u8 != assignment.telemetry_level
         {
             return self.reject(
                 &submission.job_id,
@@ -1447,6 +1596,76 @@ impl Gateway {
             );
         }
         self.submit(nonce_prefix, telemetry_level, submission, received_ms)
+    }
+
+    /// Validate a miner submission against both the signed gateway assignment
+    /// and a narrower durable local work lease. The lease may restrict the
+    /// signed envelope but may never expand it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn submit_authorized_lease(
+        &mut self,
+        device_id: &Hash256,
+        worker_id_hash: &Hash256,
+        assignment: &GatewayAssignmentV1,
+        lease: &WorkLease,
+        nonce_prefix: [u8; 4],
+        telemetry_level: TelemetryLevel,
+        submission: HandySubmission,
+        received_ms: u64,
+    ) -> Result<ForwardedCapture, GatewayError> {
+        let mut extra_nonce = [0; 24];
+        extra_nonce[..4].copy_from_slice(&nonce_prefix);
+        extra_nonce[4..8].copy_from_slice(&submission.extra_nonce2);
+        let nonce_offset = submission.nonce.checked_sub(lease.nonce_start);
+        if lease.assignment_id != assignment.object_id()
+            || lease.assignment_sequence != assignment.assignment_sequence
+            || lease.device_id != *device_id
+            || lease.extra_nonce_profile != assignment.extra_nonce_profile
+            || lease.extra_nonce_start
+                < gateway_extra_nonce(
+                    assignment.extra_nonce_prefix,
+                    assignment.extra_nonce2_start_be,
+                )
+            || lease.extra_nonce_end
+                > gateway_extra_nonce(
+                    assignment.extra_nonce_prefix,
+                    assignment.extra_nonce2_end_be,
+                )
+            || lease.extra_nonce_start > lease.extra_nonce_end
+            || extra_nonce < lease.extra_nonce_start
+            || extra_nonce > lease.extra_nonce_end
+            || lease.nonce_start < assignment.nonce_start
+            || lease.nonce_end > assignment.nonce_end
+            || lease.nonce_start > lease.nonce_end
+            || assignment.nonce_stride == 0
+            || lease.nonce_stride == 0
+            || lease.nonce_stride % assignment.nonce_stride != 0
+            || nonce_offset.is_none_or(|offset| {
+                submission.nonce > lease.nonce_end || offset % lease.nonce_stride != 0
+            })
+            || lease.edge_target.0 > assignment.edge_target.0
+            || lease.edge_target.0 < assignment.capture_target.0
+            || lease.capture_target != assignment.capture_target
+            || lease
+                .expires_at_ms
+                .is_some_and(|expiry| received_ms > expiry)
+            || lease.job_generation == 0
+            || lease.canonical_id() != lease.lease_id
+        {
+            return self.reject(
+                &submission.job_id,
+                "local-work-lease-mismatch",
+                GatewayError::AssignmentAuthorizationMismatch,
+            );
+        }
+        self.submit_authorized(
+            worker_id_hash,
+            assignment,
+            nonce_prefix,
+            telemetry_level,
+            submission,
+            received_ms,
+        )
     }
 
     fn reject<T>(
@@ -1464,6 +1683,33 @@ impl Gateway {
 
     pub fn forwarded(&self) -> &[ForwardedCapture] {
         &self.forwarded
+    }
+
+    /// Drain a bounded prefix through a durable downstream consumer. The
+    /// capture is acknowledged locally only after `admit_capture` succeeds.
+    /// Processing stops at the first downstream error so ordering and retry
+    /// behavior remain simple and deterministic.
+    pub fn drain_captures_durably(
+        &mut self,
+        consumer: &mut dyn DurableCaptureConsumer,
+        maximum: usize,
+    ) -> Result<CaptureDrainReport, GatewayError> {
+        let mut report = CaptureDrainReport::default();
+        for _ in 0..maximum {
+            let Some(capture) = self.forwarded.first().cloned() else {
+                break;
+            };
+            report.attempted = report.attempted.saturating_add(1);
+            let downstream_id = consumer
+                .admit_capture(&capture)
+                .map_err(|_| GatewayError::CaptureConsumerUnavailable)?;
+            if !self.acknowledge_capture(&capture.work_key())? {
+                return Err(GatewayError::InvalidDurableState);
+            }
+            report.acknowledged = report.acknowledged.saturating_add(1);
+            report.last_downstream_id = Some(downstream_id);
+        }
+        Ok(report)
     }
 
     /// Atomically retire a capture payload after its consumer has durably
@@ -1527,6 +1773,27 @@ impl Gateway {
         Ok(true)
     }
 
+    pub fn status(&self) -> GatewayStatus {
+        let current = self.current_job();
+        GatewayStatus {
+            current_job_id: current.map(|job| job.id.clone()),
+            current_assignment_sequence: current.map(|job| job.assignment_sequence),
+            current_issued_ms: current.map(|job| job.issued_ms),
+            current_assignment_end_ms: current.map(|job| job.assignment_end_ms),
+            current_submission_end_ms: current.map(|job| job.submission_end_ms),
+            retained_jobs: self.jobs.len(),
+            pending_captures: self.forwarded.len(),
+            retiring_assignments: self.retiring_assignments.len(),
+            queued_events: self.events.len(),
+            dropped_events: self.dropped_events,
+        }
+    }
+
+    pub fn drain_events(&mut self, maximum: usize) -> Vec<GatewayEvent> {
+        let count = maximum.min(self.events.len());
+        self.events.drain(..count).collect()
+    }
+
     pub fn events(&self) -> &VecDeque<GatewayEvent> {
         &self.events
     }
@@ -1566,7 +1833,39 @@ impl RpcSession {
             subscribed: false,
             authorization_failures: 0,
             profile,
+            assignment_authorization: None,
         }
+    }
+
+    /// Construct a Core-linked RPC session bound to one signed assignment.
+    /// The advertised nonce prefix is derived from the assignment so callers
+    /// cannot accidentally pair a locally allocated prefix with signed work.
+    pub fn new_authorized(
+        username: impl Into<String>,
+        password: impl Into<String>,
+        profile: DeviceProfile,
+        worker_id_hash: Hash256,
+        assignment: GatewayAssignmentV1,
+    ) -> Result<Self, GatewayError> {
+        if assignment.worker_id_hash != worker_id_hash
+            || profile.telemetry_level() as u8 != assignment.telemetry_level
+        {
+            return Err(GatewayError::AssignmentAuthorizationMismatch);
+        }
+        Ok(Self {
+            username: username.into(),
+            password: password.into(),
+            agent: None,
+            nonce_prefix: assignment.extra_nonce_prefix,
+            authorized: false,
+            subscribed: false,
+            authorization_failures: 0,
+            profile,
+            assignment_authorization: Some(RpcAssignmentAuthorization {
+                worker_id_hash,
+                assignment,
+            }),
+        })
     }
 
     pub fn handle_line(
@@ -1650,12 +1949,22 @@ impl RpcSession {
                     Ok(submission) if submission.username == self.username => submission,
                     _ => return Ok(vec![rpc_error(id, 0, "invalid-params")]),
                 };
-                let result = gateway.submit(
-                    self.nonce_prefix,
-                    self.profile.telemetry_level,
-                    submission,
-                    received_ms,
-                );
+                let result = match self.assignment_authorization.as_ref() {
+                    Some(authorization) => gateway.submit_authorized(
+                        &authorization.worker_id_hash,
+                        &authorization.assignment,
+                        self.nonce_prefix,
+                        self.profile.telemetry_level,
+                        submission,
+                        received_ms,
+                    ),
+                    None => gateway.submit(
+                        self.nonce_prefix,
+                        self.profile.telemetry_level,
+                        submission,
+                        received_ms,
+                    ),
+                };
                 submit_rpc_result(id, result)
             }
             "mining.get_transactions" => {
@@ -1693,6 +2002,10 @@ impl RpcSession {
         self.authorization_failures
     }
 
+    pub const fn subscribed(&self) -> bool {
+        self.subscribed
+    }
+
     pub const fn authorization_locked(&self) -> bool {
         self.authorization_failures >= MAX_AUTHORIZATION_FAILURES
     }
@@ -1725,6 +2038,217 @@ fn submit_rpc_result(
         Err(error @ (GatewayError::Storage(_) | GatewayError::CaptureCapacity)) => Err(error),
         Err(_) => Ok(vec![rpc_error(id, 20, "invalid-share")]),
     }
+}
+
+/// Serve one local HandyStratum connection while allowing a supervisor to push
+/// replacement jobs and to force immediate fallback. Gateway state is locked
+/// only while processing one request or taking one job snapshot; slow sockets
+/// never serialize unrelated miners.
+pub fn serve_rpc_connection_shared(
+    stream: TcpStream,
+    mut session: RpcSession,
+    gateway: Arc<Mutex<Gateway>>,
+    control: Arc<SharedRpcControl>,
+    max_requests: usize,
+    update_interval: Duration,
+) -> Result<RpcSession, RpcServeError> {
+    if max_requests == 0 || update_interval.is_zero() {
+        return Err(GatewayError::InvalidRpcControl.into());
+    }
+    if control.shutdown_requested() || control.fallback_active() {
+        let _ = stream.shutdown(Shutdown::Both);
+        return Ok(session);
+    }
+
+    let connection_epoch = control.connection_epoch();
+    control.enter_connection();
+    struct ConnectionGuard<'a>(&'a SharedRpcControl);
+    impl Drop for ConnectionGuard<'_> {
+        fn drop(&mut self) {
+            self.0.leave_connection();
+        }
+    }
+    let _connection_guard = ConnectionGuard(control.as_ref());
+
+    let connection_deadline = Instant::now() + RPC_CONNECTION_TIMEOUT;
+    let writer = Arc::new(Mutex::new(stream.try_clone()?));
+    let subscribed = Arc::new(AtomicBool::new(false));
+    let done = Arc::new(AtomicBool::new(false));
+    let last_job = Arc::new(Mutex::new(None::<String>));
+    let writer_error = Arc::new(Mutex::new(None::<io::Error>));
+
+    let update_stream = stream.try_clone()?;
+    let update_gateway = gateway.clone();
+    let update_control = control.clone();
+    let update_writer = writer.clone();
+    let update_subscribed = subscribed.clone();
+    let update_done = done.clone();
+    let update_last_job = last_job.clone();
+    let update_error = writer_error.clone();
+    let updater = std::thread::spawn(move || {
+        while !update_done.load(Ordering::SeqCst)
+            && !update_control.shutdown_requested()
+            && !update_control.fallback_active()
+            && update_control.connection_epoch() == connection_epoch
+        {
+            std::thread::sleep(update_interval);
+            if !update_subscribed.load(Ordering::SeqCst) {
+                continue;
+            }
+            let now_ms = process_wall_ms();
+            let update = {
+                let mut guard = match update_gateway.lock() {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        if let Ok(mut error) = update_error.lock() {
+                            *error = Some(io::Error::other("gateway lock poisoned"));
+                        }
+                        break;
+                    }
+                };
+                if guard.close_expired(now_ms).is_err() {
+                    if let Ok(mut error) = update_error.lock() {
+                        *error = Some(io::Error::other("gateway expiration failed"));
+                    }
+                    break;
+                }
+                guard.current_job().and_then(|job| {
+                    if now_ms > job.assignment_end_ms {
+                        return None;
+                    }
+                    let sent = update_last_job.lock().ok()?.clone();
+                    if sent.as_deref() == Some(job.id.as_str()) {
+                        return None;
+                    }
+                    Some((
+                        job.id.clone(),
+                        job.advertised_difficulty,
+                        job.handy_notify(),
+                    ))
+                })
+            };
+            let Some((job_id, difficulty, notification)) = update else {
+                continue;
+            };
+            let write_result = (|| -> io::Result<()> {
+                let mut writer = update_writer
+                    .lock()
+                    .map_err(|_| io::Error::other("RPC writer lock poisoned"))?;
+                write_rpc_response_until(
+                    &mut writer,
+                    &json!({
+                        "id": null,
+                        "method": "mining.set_difficulty",
+                        "params": [difficulty]
+                    }),
+                    connection_deadline,
+                )?;
+                write_rpc_response_until(&mut writer, &notification, connection_deadline)
+            })();
+            if let Err(error) = write_result {
+                if let Ok(mut stored) = update_error.lock() {
+                    *stored = Some(error);
+                }
+                break;
+            }
+            if let Ok(mut sent) = update_last_job.lock() {
+                *sent = Some(job_id);
+            }
+        }
+        let _ = update_stream.shutdown(Shutdown::Both);
+    });
+
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let result = (|| -> Result<(), RpcServeError> {
+        for _ in 0..max_requests {
+            if control.shutdown_requested()
+                || control.fallback_active()
+                || control.connection_epoch() != connection_epoch
+            {
+                break;
+            }
+            let line_deadline = (Instant::now() + RPC_LINE_TIMEOUT).min(connection_deadline);
+            let mut line = String::new();
+            let bytes_read =
+                match read_bounded_rpc_line_until(&mut reader, &mut line, line_deadline) {
+                    Ok(bytes_read) => bytes_read,
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                        ) =>
+                    {
+                        break;
+                    }
+                    Err(error) => return Err(error.into()),
+                };
+            if bytes_read == 0 {
+                break;
+            }
+            if line.len() == MAX_RPC_LINE + 2 && !line.ends_with('\n') {
+                let mut writer = writer
+                    .lock()
+                    .map_err(|_| GatewayError::GatewayLockPoisoned)?;
+                write_rpc_response_until(
+                    &mut writer,
+                    &rpc_error(Value::Null, 0, "request-too-large"),
+                    connection_deadline,
+                )?;
+                break;
+            }
+            let line = line.trim_end_matches(['\r', '\n']);
+            let received_ms = process_wall_ms();
+            let subscribed_before = session.subscribed();
+            let responses = {
+                let mut gateway = gateway
+                    .lock()
+                    .map_err(|_| GatewayError::GatewayLockPoisoned)?;
+                gateway.close_expired(received_ms)?;
+                let responses = session.handle_line(&mut gateway, line, received_ms)?;
+                if !subscribed_before
+                    && session.subscribed()
+                    && let Some(job) = gateway.current_job()
+                    && let Ok(mut sent) = last_job.lock()
+                {
+                    *sent = Some(job.id.clone());
+                }
+                responses
+            };
+            subscribed.store(session.subscribed(), Ordering::SeqCst);
+            {
+                let mut writer = writer
+                    .lock()
+                    .map_err(|_| GatewayError::GatewayLockPoisoned)?;
+                for response in responses {
+                    write_rpc_response_until(&mut writer, &response, connection_deadline)?;
+                }
+            }
+            if session.authorization_locked() {
+                break;
+            }
+        }
+        Ok(())
+    })();
+
+    done.store(true, Ordering::SeqCst);
+    let _ = stream.shutdown(Shutdown::Both);
+    let _ = updater.join();
+    control
+        .add_authorization_failures(session.authorization_failures())
+        .map_err(RpcServeError::Gateway)?;
+    if let Some(error) = writer_error
+        .lock()
+        .map_err(|_| GatewayError::GatewayLockPoisoned)?
+        .take()
+        && result.is_ok()
+    {
+        return Err(RpcServeError::ClientIo {
+            source: error,
+            authorization_failures: session.authorization_failures(),
+        });
+    }
+    result?;
+    Ok(session)
 }
 
 impl FailoverPool {

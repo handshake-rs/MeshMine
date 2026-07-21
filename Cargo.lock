@@ -343,6 +343,17 @@ name = "hns-consensus"
 version = "0.1.0"
 dependencies = [
  "hns-primitives",
+ "hns-secp256k1",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "hns-mempool"
+version = "0.1.0"
+dependencies = [
+ "hns-consensus",
+ "hns-primitives",
  "serde",
  "thiserror",
 ]
@@ -352,6 +363,7 @@ name = "hns-mining"
 version = "0.1.0"
 dependencies = [
  "hns-consensus",
+ "hns-mempool",
  "hns-primitives",
  "thiserror",
  "tokio",
@@ -364,6 +376,14 @@ dependencies = [
  "blake2",
  "serde",
  "sha3",
+ "thiserror",
+]
+
+[[package]]
+name = "hns-secp256k1"
+version = "0.1.0"
+dependencies = [
+ "cc",
  "thiserror",
 ]
 
@@ -503,6 +523,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "meshmine-core-link"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "libc",
+ "meshmine-body",
+ "meshmine-codec",
+ "meshmine-crypto",
+ "meshmine-gateway",
+ "meshmine-handoff",
+ "meshmine-hns",
+ "meshmine-share",
+ "meshmine-storage",
+ "meshmine-types",
+ "rand 0.9.5",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "meshmine-cored"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "libc",
+ "meshmine-codec",
+ "meshmine-core-link",
+ "meshmine-crypto",
+ "meshmine-parent-oracle",
+ "meshmine-share",
+ "meshmine-storage",
+ "meshmine-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "meshmine-corelink-operatord"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "libc",
+ "meshmine-core-link",
+ "meshmine-gateway",
+ "meshmine-hns",
+ "meshmine-service",
+ "meshmine-storage",
+ "meshmine-types",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "meshmine-crypto"
 version = "0.1.0"
 dependencies = [
@@ -539,6 +616,7 @@ dependencies = [
  "meshmine-hns",
  "meshmine-storage",
  "meshmine-types",
+ "meshmine-work",
  "num-bigint",
  "serde_json",
  "tempfile",
@@ -662,6 +740,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "meshmine-operatord"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "libc",
+ "meshmine-gateway",
+ "meshmine-hns",
+ "meshmine-service",
+ "meshmine-storage",
+ "meshmine-types",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "meshmine-parent-oracle"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "meshmine-share",
+ "meshmine-types",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "meshmine-service"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "meshmine-codec",
+ "meshmine-crypto",
+ "meshmine-gateway",
+ "meshmine-hns",
+ "meshmine-storage",
+ "meshmine-types",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "meshmine-settlement"
 version = "0.1.0"
 dependencies = [
@@ -744,6 +867,30 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "meshmine-work"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "meshmine-codec",
+ "meshmine-hns",
+ "meshmine-storage",
+ "meshmine-types",
+ "num-bigint",
+ "num-traits",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "meshmine-workd"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "meshmine-storage",
+ "meshmine-work",
 ]
 
 [[package]]

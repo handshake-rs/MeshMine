@@ -1,10 +1,15 @@
 # Authenticated gateway-to-Core capture handoff
 
-Status: implemented protocol, canonical assignment/job binding, atomic-admission
-foundation, native `hsrd` snapshot/body bridge, and fail-closed durable
-assignment-to-`hsrd` binding; continuous local service, atomic live activation
-orchestration, production context distribution, and physical ASIC evidence
-remain release gates.
+Status: implemented protocol, canonical assignment/job binding, portable local
+lease enforcement, atomic admission, native `hsrd` snapshot/body bridge,
+fail-closed durable assignment-to-`hsrd` binding, and the authenticated
+continuous local Core/operator path. The integrated path includes Linux peer credentials,
+pinned Ed25519 mutual authentication, exact signed assignment bundles,
+automatic exact `ShareV2` construction, durable terminal receipt reconciliation,
+signed assignment drain/transition orchestration, bounded live HSD parent
+qualification, optional/required HSRD shadow agreement, reconnect/fallback
+supervision, the read-only dashboard, and graceful shutdown. Production context
+distribution and physical ASIC evidence remain release gates.
 
 ## Safety boundary
 
@@ -101,22 +106,45 @@ the same evidence/cursor transaction but cannot create accepted-share or
 accepted-work records. A crash therefore cannot expose credit without its
 authenticated source or acknowledge a capture whose terminal state is absent.
 
+## Local service composition
+
+The unified operator composes the continuous local process boundary and its parent authority check:
+
+- `meshmine-cored` stages and validates the exact signed Core assignment bundle,
+  serves one private Unix-domain endpoint, constructs exact `ShareV2` objects,
+  and returns signed terminal capture/drain dispositions;
+- `meshmine-corelink-operatord` authenticates Core, durably imports bundles,
+  derives exact gateway jobs, drains captures, triggers ASIC fallback at the
+  signed cutoff, and completes the signed transition before job replacement;
+- the transport checks Linux `SO_PEERCRED`, expected UID, pinned Core and
+  gateway Ed25519 identities, handshake freshness, frame sequence, frame kind,
+  size, timeout, and checksum;
+- the operator pending-capture spool maintains durable record/byte counters and
+  atomically replaces a pending envelope with its terminal receipt.
+
+This is a local pre-production boundary. The Core daemon now checks the exact
+parent against a bounded loopback HSD active-chain RPC source and can require an
+HSRD shadow source to agree on hash, height, time, and chainwork. HSRD cannot
+grant authority by itself. The operator composes the Core link with the local
+supervisor, fallback hysteresis, dashboard, event journal, reconnect backoff,
+and bounded shutdown drain.
+
 ## Remaining production gates
 
-The protocol boundary and atomic storage composition do not by themselves
-enable production gateway mining. The following remain mandatory:
+The following remain mandatory:
 
-- a continuous bounded Unix-domain service with peer-credential checks and
-  mutual Ed25519 authentication;
-- operator-authenticated context/assignment delivery to that service;
-- atomic live composition of the implemented durable `hsrd`
-  generation/job-ID-to-assignment-ID record with Core authorization and gateway
-  activation;
-- transition and drain orchestration in the live gateway and Core processes;
-- production metrics, spool pressure handling, restart drills, and incident
-  procedures;
-- exact physical Goldshell/HS3 capture, reconnect, stale-work, and drain tests;
-  and
-- independent review of the new object and state-machine boundary.
+- compile and fault-test HSD/HSRD disagreement, RPC loss, reconnect, dashboard,
+  fallback, and assignment-drain behavior without weakening the signed
+  boundary;
+- atomically compose the implemented durable `hsrd`
+  generation/job-ID-to-assignment-ID binding with live Core authorization and
+  gateway activation;
+- run restart, socket-loss, spool-capacity, partial-transition, and disk-failure
+  drills on the compiled binaries;
+- obtain exact physical Goldshell/HS3 capture, reconnect, stale-work, fallback,
+  and drain evidence;
+- independently review the new bundle, transport, receipt, and transition state
+  machines; and
+- close every remaining MM-0001 production and native-authority gate.
 
 Until those gates pass, gateway production eligibility remains false.

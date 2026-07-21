@@ -492,6 +492,127 @@ fn signed_gateway_assignment_fixes_job_id_prefix_and_miner_selected_ranges() {
 }
 
 #[test]
+fn core_linked_rpc_session_enforces_its_signed_assignment() {
+    let directory = secure_tempdir().unwrap();
+    let store = Arc::new(RedbStore::create(directory.path().join("rpc-authorized.redb")).unwrap());
+    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let fixture = authorized_fixture(1);
+    gateway
+        .issue_authorized_job(AuthorizedGatewayJobRequest {
+            manifest: &fixture.manifest,
+            assignment: &fixture.assignment,
+            session: &fixture.session,
+            body: &fixture.body,
+            descriptor: &fixture.descriptor,
+            body_certificate: &fixture.body_certificate,
+            job: fixture.job.clone(),
+            transition: None,
+        })
+        .unwrap();
+    gateway
+        .authorized_assignment_nonce_prefix(&fixture.assignment.worker_id_hash, &fixture.assignment)
+        .unwrap();
+
+    let mut session = RpcSession::new_authorized(
+        "operator.worker",
+        "secret",
+        DeviceProfile::simulator(),
+        fixture.assignment.worker_id_hash,
+        fixture.assignment.clone(),
+    )
+    .unwrap();
+    let subscribe = session
+        .handle_line(
+            &mut gateway,
+            &json!({"id": 1, "method": "mining.subscribe", "params": ["MeshMineSim/2"]})
+                .to_string(),
+            150,
+        )
+        .unwrap();
+    assert_eq!(
+        subscribe[0]["result"][1],
+        hex::encode(fixture.assignment.extra_nonce_prefix)
+    );
+    assert_eq!(
+        session
+            .handle_line(
+                &mut gateway,
+                &json!({"id": 2, "method": "mining.authorize", "params": ["operator.worker", "secret"]})
+                    .to_string(),
+                150,
+            )
+            .unwrap()[0]["result"],
+        true
+    );
+
+    let job_id = gateway_assignment_job_id(&fixture.assignment);
+    let rejected = session
+        .handle_line(
+            &mut gateway,
+            &json!({
+                "id": 3,
+                "method": "mining.submit",
+                "params": ["operator.worker", job_id, "00000003", "65000000", "00000000"]
+            })
+            .to_string(),
+            150,
+        )
+        .unwrap();
+    assert_eq!(rejected[0]["error"][1], "invalid-share");
+    assert!(gateway.forwarded().is_empty());
+
+    let nonce = qualifying_nonces(fixture.assignment.extra_nonce_prefix, 1)[0];
+    let accepted = session
+        .handle_line(
+            &mut gateway,
+            &json!({
+                "id": 4,
+                "method": "mining.submit",
+                "params": [
+                    "operator.worker",
+                    gateway_assignment_job_id(&fixture.assignment),
+                    "00000001",
+                    "65000000",
+                    format!("{nonce:08x}")
+                ]
+            })
+            .to_string(),
+            150,
+        )
+        .unwrap();
+    assert_eq!(accepted[0]["result"], true);
+    assert_eq!(gateway.forwarded().len(), 1);
+}
+
+#[test]
+fn authorized_rpc_session_rejects_a_different_worker_or_telemetry_profile() {
+    let fixture = authorized_fixture(1);
+    assert!(matches!(
+        RpcSession::new_authorized(
+            "operator.worker",
+            "secret",
+            DeviceProfile::simulator(),
+            hash(99),
+            fixture.assignment.clone(),
+        ),
+        Err(GatewayError::AssignmentAuthorizationMismatch)
+    ));
+
+    let mut assignment = fixture.assignment;
+    assignment.telemetry_level = TelemetryLevel::ObservableController as u8;
+    assert!(matches!(
+        RpcSession::new_authorized(
+            "operator.worker",
+            "secret",
+            DeviceProfile::simulator(),
+            assignment.worker_id_hash,
+            assignment,
+        ),
+        Err(GatewayError::AssignmentAuthorizationMismatch)
+    ));
+}
+
+#[test]
 fn signed_mismatch_cannot_burn_the_local_assignment_sequence() {
     let directory = secure_tempdir().unwrap();
     let store = Arc::new(RedbStore::create(directory.path().join("sequence.redb")).unwrap());
@@ -1361,4 +1482,223 @@ fn read_rpc(reader: &mut BufReader<TcpStream>) -> Value {
     let mut line = String::new();
     reader.read_line(&mut line).unwrap();
     serde_json::from_str(&line).unwrap()
+}
+
+#[derive(Default)]
+struct TestCaptureConsumer {
+    fail: bool,
+    admitted: Vec<Hash256>,
+}
+
+impl DurableCaptureConsumer for TestCaptureConsumer {
+    fn admit_capture(&mut self, capture: &ForwardedCapture) -> Result<Hash256, String> {
+        if self.fail {
+            return Err("offline".to_owned());
+        }
+        let id = capture.work_key();
+        self.admitted.push(id);
+        Ok(id)
+    }
+}
+
+#[test]
+fn durable_capture_drain_acknowledges_only_after_consumer_success() {
+    let store = Arc::new(MemoryStore::default());
+    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    gateway.issue_job(job()).unwrap();
+    let prefix = gateway.assignment_nonce_prefix(&hash(91), 1).unwrap();
+    let nonce = qualifying_nonces(prefix, 1)[0];
+    let capture = gateway
+        .submit(prefix, TelemetryLevel::StockAsic, submission(1, nonce), 150)
+        .unwrap();
+
+    let mut failing = TestCaptureConsumer {
+        fail: true,
+        admitted: Vec::new(),
+    };
+    assert!(matches!(
+        gateway.drain_captures_durably(&mut failing, 1),
+        Err(GatewayError::CaptureConsumerUnavailable)
+    ));
+    assert_eq!(gateway.forwarded(), std::slice::from_ref(&capture));
+
+    let mut healthy = TestCaptureConsumer::default();
+    let report = gateway.drain_captures_durably(&mut healthy, 1).unwrap();
+    assert_eq!(report.attempted, 1);
+    assert_eq!(report.acknowledged, 1);
+    assert_eq!(report.last_downstream_id, Some(capture.work_key()));
+    assert_eq!(healthy.admitted, vec![capture.work_key()]);
+    assert!(gateway.forwarded().is_empty());
+}
+
+#[test]
+fn local_work_lease_narrows_signed_gateway_assignment() {
+    let fixture = authorized_fixture(1);
+    let gateway_store = Arc::new(MemoryStore::default());
+    let mut gateway = Gateway::open_research_simulator(gateway_store).unwrap();
+    gateway
+        .issue_authorized_job(AuthorizedGatewayJobRequest {
+            manifest: &fixture.manifest,
+            assignment: &fixture.assignment,
+            session: &fixture.session,
+            body: &fixture.body,
+            descriptor: &fixture.descriptor,
+            body_certificate: &fixture.body_certificate,
+            job: fixture.job.clone(),
+            transition: None,
+        })
+        .unwrap();
+
+    let work_store: Arc<dyn meshmine_storage::DurableStore> = Arc::new(MemoryStore::default());
+    let planner = meshmine_work::WorkPlanner::open(
+        work_store,
+        meshmine_work::PlannerLimits {
+            maximum_extra_nonce_values_per_lease: 1,
+            maximum_nonce_values_per_lease: u64::from(u32::MAX),
+            target_native_lease_ms: 250,
+        },
+    )
+    .unwrap();
+    let capabilities = meshmine_work::DeviceCapabilities {
+        device_id: hash(90),
+        backend_kind: meshmine_work::BackendKind::HandyStratum,
+        supports_nonce_range: false,
+        supports_nonce_stride: false,
+        supports_extra_nonce_range: true,
+        supports_ntime_rolling: false,
+        supports_job_prepare: false,
+        reports_range_completion: false,
+        minimum_device_target: fixture.assignment.capture_target,
+        maximum_job_rate_hz: 10,
+        preferred_batch_size: 1,
+        measured_hashrate: None,
+        telemetry_level: 0,
+    };
+    let envelope =
+        meshmine_work::WorkEnvelope::from_gateway_assignment(&fixture.assignment, 1).unwrap();
+    let lease = planner
+        .allocate(&envelope, &capabilities, fixture.job.issued_ms, None)
+        .unwrap();
+    assert_eq!(
+        meshmine_work::extra_nonce2(&lease.extra_nonce_start),
+        Some(1)
+    );
+    assert_eq!(meshmine_work::extra_nonce2(&lease.extra_nonce_end), Some(1));
+
+    let extra_nonce = lease.extra_nonce_start;
+    let mut qualifying = None;
+    for nonce in 0..u32::MAX {
+        let header = MinerHeader {
+            nonce,
+            time: u64::from(fixture.job.ntime),
+            prev_block: fixture.job.previous_block,
+            tree_root: fixture.job.tree_root,
+            mask_hash: fixture.job.mask_hash,
+            extra_nonce,
+            reserved_root: fixture.job.reserved_root,
+            witness_root: fixture.job.witness_root,
+            merkle_root: fixture.job.merkle_root,
+            version: fixture.job.version,
+            bits: fixture.job.bits,
+        };
+        if header.share_hash() <= fixture.job.capture_target {
+            qualifying = Some(nonce);
+            break;
+        }
+    }
+    let nonce = qualifying.expect("lease must contain a qualifying test nonce");
+
+    let mut expired_lease = lease.clone();
+    expired_lease.expires_at_ms = Some(fixture.job.issued_ms);
+    expired_lease.lease_id = expired_lease.canonical_id();
+    assert!(matches!(
+        gateway.submit_authorized_lease(
+            &capabilities.device_id,
+            &fixture.assignment.worker_id_hash,
+            &fixture.assignment,
+            &expired_lease,
+            fixture.assignment.extra_nonce_prefix,
+            TelemetryLevel::StockAsic,
+            HandySubmission {
+                username: "operator.worker".to_owned(),
+                job_id: fixture.job.id.clone(),
+                extra_nonce2: 1u32.to_be_bytes(),
+                ntime: fixture.job.ntime,
+                nonce,
+            },
+            fixture.job.issued_ms + 1,
+        ),
+        Err(GatewayError::AssignmentAuthorizationMismatch)
+    ));
+
+    let accepted = gateway
+        .submit_authorized_lease(
+            &capabilities.device_id,
+            &fixture.assignment.worker_id_hash,
+            &fixture.assignment,
+            &lease,
+            fixture.assignment.extra_nonce_prefix,
+            TelemetryLevel::StockAsic,
+            HandySubmission {
+                username: "operator.worker".to_owned(),
+                job_id: fixture.job.id.clone(),
+                extra_nonce2: 1u32.to_be_bytes(),
+                ntime: fixture.job.ntime,
+                nonce,
+            },
+            fixture.job.issued_ms + 1,
+        )
+        .unwrap();
+    assert_eq!(accepted.miner_header.extra_nonce, extra_nonce);
+
+    assert!(matches!(
+        gateway.submit_authorized_lease(
+            &capabilities.device_id,
+            &fixture.assignment.worker_id_hash,
+            &fixture.assignment,
+            &lease,
+            fixture.assignment.extra_nonce_prefix,
+            TelemetryLevel::StockAsic,
+            HandySubmission {
+                username: "operator.worker".to_owned(),
+                job_id: fixture.job.id,
+                extra_nonce2: 2u32.to_be_bytes(),
+                ntime: fixture.job.ntime,
+                nonce,
+            },
+            fixture.job.issued_ms + 1,
+        ),
+        Err(GatewayError::AssignmentAuthorizationMismatch)
+    ));
+}
+
+#[test]
+fn shared_rpc_control_rotates_sessions_and_fails_closed_on_auth_budget() {
+    let control = SharedRpcControl::new(3).unwrap();
+    assert_eq!(control.connection_epoch(), 0);
+    assert_eq!(control.rotate_connections(), 1);
+    assert_eq!(control.connection_epoch(), 1);
+    control.add_authorization_failures(2).unwrap();
+    assert_eq!(control.authorization_failures(), 2);
+    assert!(matches!(
+        control.add_authorization_failures(1),
+        Err(GatewayError::AuthorizationFailureLimit)
+    ));
+    assert!(control.fallback_active());
+}
+
+#[test]
+fn gateway_status_reports_current_job_and_pending_capture_counts() {
+    let store: Arc<dyn DurableStore> = Arc::new(MemoryStore::default());
+    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let job = job();
+    let job_id = job.id.clone();
+    let issued_ms = job.issued_ms;
+    let assignment_end_ms = job.assignment_end_ms;
+    gateway.issue_job(job).unwrap();
+    let status = gateway.status();
+    assert_eq!(status.current_job_id.as_deref(), Some(job_id.as_str()));
+    assert_eq!(status.current_issued_ms, Some(issued_ms));
+    assert_eq!(status.current_assignment_end_ms, Some(assignment_end_ms));
+    assert_eq!(status.pending_captures, 0);
 }

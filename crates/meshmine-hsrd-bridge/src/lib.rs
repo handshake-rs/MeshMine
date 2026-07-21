@@ -478,6 +478,7 @@ mod tests {
                 time: 100,
                 bits: 0x2000_ffff,
             },
+            next_tree_root: [5; 32],
             chainwork: 1_000u64.into(),
         };
         let coinbase = Transaction {
@@ -511,7 +512,7 @@ mod tests {
         let mask_hash = blake2b_256_many([parent_hash.as_slice(), mask.as_slice()]);
         let header = MiningHeaderTemplate {
             parent_hash: snapshot.tip.hash,
-            tree_root: [5; 32],
+            tree_root: snapshot.next_tree_root,
             reserved_root: [6; 32],
             witness_root,
             merkle_root,

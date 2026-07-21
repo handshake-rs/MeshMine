@@ -970,6 +970,7 @@ struct StaticPeerConfig {
 
 #[derive(Clone, Debug)]
 struct ForwardedGossip {
+    #[cfg_attr(not(test), allow(dead_code))]
     sequence: u64,
     source_peer: [u8; 32],
     topic: GossipTopic,

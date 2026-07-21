@@ -3,8 +3,8 @@
 Run from the repository root with release optimizations:
 
 ```sh
-cargo run --locked --release -p meshmine-share --bin performance_gate
-cargo run --locked --release -p meshmine-settlement --bin performance_gate
+cargo run --locked --release -p meshmine-share --bin share_performance_gate
+cargo run --locked --release -p meshmine-settlement --bin settlement_performance_gate
 cargo run --locked --release -p meshmine-sim -- capture 1925ae67
 ```
 

@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "production": false,
+  "network_id": 2,
+  "socket_path": "/run/user/1000/meshmine/core-link.sock",
+  "state_path": "/home/operator/.local/share/meshmine/core-link-core.redb",
+  "core_signing_key_file": "/home/operator/.config/meshmine/core-link-core.key",
+  "operator_signing_key_file": "/home/operator/.config/meshmine/operator.key",
+  "expected_gateway_pubkey": "4242424242424242424242424242424242424242424242424242424242424242",
+  "expected_peer_uid": 1000,
+  "parent_oracle_file": "/home/operator/.config/meshmine/parent-oracle.json",
+  "maximum_frame_bytes": 8454144,
+  "read_timeout_ms": 1000,
+  "write_timeout_ms": 30000
+}

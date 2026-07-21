@@ -1,0 +1,26 @@
+[package]
+name = "meshmine-core-link"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Authenticated local Core-to-operator assignment and capture transport"
+
+[dependencies]
+ed25519-dalek.workspace = true
+hex.workspace = true
+libc.workspace = true
+meshmine-body = { path = "../meshmine-body" }
+meshmine-codec = { path = "../meshmine-codec" }
+meshmine-crypto = { path = "../meshmine-crypto" }
+meshmine-gateway = { path = "../meshmine-gateway" }
+meshmine-handoff = { path = "../meshmine-handoff" }
+meshmine-hns = { path = "../meshmine-hns" }
+meshmine-share = { path = "../meshmine-share" }
+meshmine-storage = { path = "../meshmine-storage" }
+meshmine-types = { path = "../meshmine-types" }
+rand.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.20.0"

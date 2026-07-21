@@ -1,0 +1,19 @@
+[package]
+name = "meshmine-operatord"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Continuous local MeshMine operator service and dashboard"
+
+[dependencies]
+hex.workspace = true
+libc.workspace = true
+meshmine-gateway = { path = "../../crates/meshmine-gateway" }
+meshmine-hns = { path = "../../crates/meshmine-hns" }
+meshmine-service = { path = "../../crates/meshmine-service" }
+meshmine-storage = { path = "../../crates/meshmine-storage" }
+meshmine-types = { path = "../../crates/meshmine-types" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

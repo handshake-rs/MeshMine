@@ -12,6 +12,7 @@ meshmine-hns = { path = "../meshmine-hns" }
 meshmine-handoff = { path = "../meshmine-handoff" }
 meshmine-storage = { path = "../meshmine-storage" }
 meshmine-types = { path = "../meshmine-types" }
+meshmine-work = { path = "../meshmine-work" }
 num-bigint.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

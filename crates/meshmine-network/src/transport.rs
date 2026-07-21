@@ -1496,12 +1496,14 @@ mod tests {
             settlement_entered: AtomicBool::new(false),
             fast_calls: AtomicUsize::new(0),
         });
-        let mut limits = QuicTransportLimits::default();
-        limits.maximum_blocking_callbacks = 4;
-        limits.maximum_fast_path_callbacks = 1;
-        limits.maximum_accounting_callbacks = 1;
-        limits.maximum_availability_callbacks = 1;
-        limits.maximum_settlement_callbacks = 1;
+        let limits = QuicTransportLimits {
+            maximum_blocking_callbacks: 4,
+            maximum_fast_path_callbacks: 1,
+            maximum_accounting_callbacks: 1,
+            maximum_availability_callbacks: 1,
+            maximum_settlement_callbacks: 1,
+            ..QuicTransportLimits::default()
+        };
         let callback_gates = CallbackGates::new(limits);
         let encode = |topic, payload: Vec<u8>| {
             let object_id = domain_hash("meshmine/test-quic-object/v2", &payload);

@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "production": false,
+  "network_id": 2,
+  "core_socket_path": "/run/user/1000/meshmine/core-link.sock",
+  "gateway_signing_key_file": "/home/operator/.config/meshmine/gateway.key",
+  "pinned_core_pubkey": "4343434343434343434343434343434343434343434343434343434343434343",
+  "corelink_state": "/home/operator/.local/share/meshmine/core-link-operator.redb",
+  "gateway_state": "/home/operator/.local/share/meshmine/gateway.redb",
+  "service_state": "/home/operator/.local/share/meshmine/operator-v9.redb",
+  "gateway_listen": "127.0.0.1:3008",
+  "dashboard_listen": "127.0.0.1:3080",
+  "password_file": "/home/operator/.config/meshmine/gateway.password",
+  "username": "operator.worker",
+  "profile": "handyminer-reference",
+  "fallback_endpoints": [
+    "stratum+tcp://fallback-pool.example:3008"
+  ],
+  "poll_interval_ms": 100,
+  "capture_drain_batch": 1024,
+  "maximum_connections": 128,
+  "maximum_requests_per_connection": 1000000,
+  "maximum_authorization_failures": 64,
+  "unhealthy_samples_before_fallback": 3,
+  "healthy_samples_before_restore": 5,
+  "minimum_fallback_hold_ms": 15000,
+  "capture_backlog_soft_limit": 10000,
+  "capture_backlog_hard_limit": 90000,
+  "event_capacity": 10000,
+  "reconnect_initial_ms": 250,
+  "reconnect_maximum_ms": 30000
+}

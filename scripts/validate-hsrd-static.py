@@ -650,8 +650,22 @@ def validate_consensus_boundaries() -> None:
             "load_name_tree_snapshot_pins",
             "active interval height",
             "startup_rejects_missing_or_corrupt_name_tree_snapshot_pin",
+            "pub struct NameTreeCompactionConfig",
+            "pub struct NameTreeCompactionCheckpoint",
+            "NAME_TREE_COMPACTION_CHECKPOINT_KEY",
+            "compact_name_tree_nodes_if_due",
+            "load_name_tree_compaction_checkpoint",
+            "startup_name_tree_compaction_is_due_bounded_and_checksummed",
+            "startup_name_tree_compaction_survives_unclean_rocksdb_reopen",
         ),
-        "durable name-tree snapshot startup",
+        "durable name-tree snapshot and compaction startup",
+    )
+
+    rpc_source = read_text(ROOT / "hsrd/crates/hns-rpc/src/lib.rs")
+    require_tokens(
+        rpc_source,
+        ("pub struct RpcNameTreeCompactionInfo", "pub name_tree_compaction:"),
+        "name-tree compaction diagnostics",
     )
 
 
@@ -778,6 +792,8 @@ def validate_shadow_sync() -> None:
         (
             "shadow_sync: bool",
             "shadow_sync_poll_ms: u64",
+            "compact_name_tree_on_startup: bool",
+            "name_tree_compaction_interval: u32",
             "mining_engine: bool",
             "p2p_listen: Option<SocketAddr>",
             'long = "connect"',

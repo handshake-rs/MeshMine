@@ -1,8 +1,7 @@
 'use strict';
 
-// Generates deterministic vectors for HSD's Claim envelope and the binary
-// ownership TXT payload embedded in DNSSEC proofs. Full DNS record/signature
-// proof vectors are intentionally a later fixture surface.
+// Generates deterministic vectors for HSD's Claim envelope, binary ownership
+// TXT payload, and complete upstream DNSSEC ownership-proof corpus.
 
 process.env.NODE_BACKEND = process.env.NODE_BACKEND || 'js';
 
@@ -14,6 +13,7 @@ const base32 = require('bcrypto/lib/encoding/base32');
 const blake2b = require('bcrypto/lib/blake2b');
 const dnssec = require('bns/lib/dnssec');
 const {types, hashes} = require('bns/lib/constants');
+const GOST94 = require('bcrypto/lib/gost94');
 
 const Claim = require('hsd/lib/primitives/claim');
 const Network = require('hsd/lib/protocol/network');
@@ -24,7 +24,12 @@ const consensus = require('hsd/lib/protocol/consensus');
 const REVISION = '698e252ebc7b5c1dd0a9587e342fdd153d020ae4';
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT = path.join(ROOT, 'hsrd/fixtures/hsd/claims/codec-v1.json');
-const PROOF_SOURCE = path.join(__dirname, 'fixtures/ownership-nl.zone');
+const PROOF_SOURCES = [
+  ['upstream-ownership-cloudflare', 'ownership-cloudflare.zone'],
+  ['upstream-ownership-fr', 'ownership-fr.zone'],
+  ['upstream-ownership-nl', 'ownership-nl.zone'],
+  ['upstream-ownership-xn--ogbpf8fl', 'ownership-xn--ogbpf8fl.zone']
+];
 const COMMIT_HASH = Buffer.from(
   '0025f4480dadc61f13f507af9c9c9d06373fed38727ea467b6b2d5b09d522164',
   'hex'
@@ -116,18 +121,29 @@ function dataDecodeMutation(id, raw) {
   return {id, raw: raw.toString('hex'), accepted: strictDataDecode(raw)};
 }
 
-function proofVector() {
-  const source = fs.readFileSync(PROOF_SOURCE, 'utf8');
+function anchorVector(name, anchor, valid) {
+  return {
+    name,
+    keyTag: anchor.data.keyTag,
+    algorithm: anchor.data.algorithm,
+    digestType: anchor.data.digestType,
+    digest: anchor.data.digest.toString('hex'),
+    signaturesValidWithHistoricalTestPolicy: valid
+  };
+}
+
+function proofVector(id, filename) {
+  const sourcePath = path.join(__dirname, 'fixtures', filename);
+  const source = fs.readFileSync(sourcePath, 'utf8');
   const proof = OwnershipProof.fromString(source);
   const raw = proof.encode();
   const decoded = OwnershipProof.decode(raw);
   const [inception, expiration] = decoded.getWindow();
 
   assert.strictEqual(decoded.encode().toString('hex'), raw.toString('hex'));
-  assert.strictEqual(decoded.getTarget(), 'nl.');
-  assert.strictEqual(decoded.getName(), 'nl');
   assert(decoded.isSane(), 'upstream proof sanity');
-  assert(decoded.isWeak(), 'upstream proof weak-key classification');
+  assert(decoded.getTarget(), 'upstream proof target');
+  assert(decoded.getName(), 'upstream proof name');
 
   const root = decoded.zones[0];
   const rootSig = root.keys.find(rr => rr.type === types.RRSIG);
@@ -135,27 +151,38 @@ function proofVector() {
   const rootKey = root.keys.find(rr =>
     rr.type === types.DNSKEY && rr.data.keyTag() === rootSig.data.keyTag);
   assert(rootKey, 'upstream root signing key');
-  const proofRootAnchor = dnssec.createDS(rootKey, hashes.SHA256);
-  assert(proofRootAnchor, 'upstream proof root anchor');
+  const sha256Anchor = dnssec.createDS(rootKey, hashes.SHA256);
+  const gost94Anchor = dnssec.createDS(rootKey, hashes.GOST94);
+  assert(sha256Anchor, 'upstream proof SHA-256 root anchor');
+  assert(gost94Anchor, 'upstream proof GOST94 root anchor');
 
   const signaturesValid = decoded.verifySignatures();
   const savedAnchors = ownership.anchors;
   const savedIgnore = ownership.ignore;
-  ownership.anchors = [proofRootAnchor];
-  ownership.ignore = true;
-  const signaturesValidWithHistoricalTestPolicy = decoded.verifySignatures();
-  ownership.anchors = savedAnchors;
-  ownership.ignore = savedIgnore;
+  let sha256Valid;
+  let gost94Valid;
+  try {
+    ownership.ignore = true;
+    ownership.anchors = [sha256Anchor];
+    sha256Valid = decoded.verifySignatures();
+    ownership.anchors = [gost94Anchor];
+    gost94Valid = decoded.verifySignatures();
+  } finally {
+    ownership.anchors = savedAnchors;
+    ownership.ignore = savedIgnore;
+  }
   assert.strictEqual(signaturesValid, false,
     'historical proof must not match HSD current root anchor');
-  assert(signaturesValidWithHistoricalTestPolicy,
-    'historical proof signatures under its test anchor/claim-filter policy');
+  assert(sha256Valid,
+    'historical proof signatures under its SHA-256 test anchor policy');
+  assert(gost94Valid,
+    'historical proof signatures under its GOST94 test anchor policy');
   const reservedItem = reserved.getByName(decoded.getName());
   assert(reservedItem, 'upstream proof reserved name');
 
   return {
-    id: 'upstream-ownership-nl',
-    source: 'handshake-org/hsd test/data/ownership-nl.zone',
+    id,
+    source: `handshake-org/hsd test/data/${filename}`,
     sourceBlake2b256: blake2b.digest(Buffer.from(source), 32).toString('hex'),
     raw: raw.toString('hex'),
     size: raw.length,
@@ -166,16 +193,21 @@ function proofVector() {
     reservedValue: reservedItem.value,
     sane: decoded.isSane(),
     signaturesValid,
-    signaturesValidWithHistoricalTestPolicy,
-    proofRootAnchor: {
-      keyTag: proofRootAnchor.data.keyTag,
-      algorithm: proofRootAnchor.data.algorithm,
-      digestType: proofRootAnchor.data.digestType,
-      digest: proofRootAnchor.data.digest.toString('hex')
-    },
+    rootAnchors: [
+      anchorVector('SHA256', sha256Anchor, sha256Valid),
+      anchorVector('GOST94', gost94Anchor, gost94Valid)
+    ],
     weak: decoded.isWeak(),
     inception,
     expiration
+  };
+}
+
+function gostDigestVector(id, data) {
+  return {
+    id,
+    data: data.toString('hex'),
+    digest: GOST94.digest(data).toString('hex')
   };
 }
 
@@ -216,7 +248,19 @@ function makeFixture() {
       commitHash: knownDecoded.commitHash,
       commitHeight: knownDecoded.commitHeight
     },
-    proof: proofVector(),
+    proofs: PROOF_SOURCES.map(([id, filename]) => proofVector(id, filename)),
+    gost94Digests: [
+      gostDigestVector('empty', Buffer.alloc(0)),
+      gostDigestVector('one-byte', Buffer.from('a')),
+      gostDigestVector('abc', Buffer.from('abc')),
+      gostDigestVector('31-byte-boundary', Buffer.alloc(31, 0x5a)),
+      gostDigestVector('32-byte-boundary', Buffer.alloc(32, 0x5a)),
+      gostDigestVector('33-byte-boundary', Buffer.alloc(33, 0x5a)),
+      gostDigestVector(
+        'multi-block-255',
+        Buffer.from(Array.from({length: 255}, (_, index) => index))
+      )
+    ],
     claims,
     data,
     claimDecodeMutations: [

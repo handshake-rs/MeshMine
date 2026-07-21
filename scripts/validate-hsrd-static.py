@@ -380,6 +380,7 @@ def validate_oracle_revision() -> None:
     exact_revision_files = [
         ROOT / "hsd-oracle/generate-hsrd-script-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-airdrop-fixtures.js",
+        ROOT / "hsd-oracle/generate-hsrd-claim-fixtures.js",
         ROOT / "hsd-oracle/export-hsrd-mainnet-deployment-history.js",
         ROOT / "hsd-oracle/generate-hsrd-covenant-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-name-state-codec-fixtures.js",
@@ -389,6 +390,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-mining-template-fixtures.js",
         ROOT / "hsrd/fixtures/hsd/scripts/sighash-v1.json",
         ROOT / "hsrd/fixtures/hsd/airdrops/codec-v1.json",
+        ROOT / "hsrd/fixtures/hsd/claims/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/chains/mainnet-deployment-history-v1.json",
         ROOT / "hsrd/fixtures/hsd/covenants/linkage-v1.json",
         ROOT / "hsrd/fixtures/hsd/name-states/codec-v1.json",
@@ -405,6 +407,7 @@ def validate_oracle_revision() -> None:
     check_scripts = (
         "hsrd-script-fixtures",
         "hsrd-airdrop-fixtures",
+        "hsrd-claim-fixtures",
         "hsrd-mainnet-deployment-history",
         "hsrd-covenant-fixtures",
         "hsrd-name-state-codec-fixtures",
@@ -443,6 +446,19 @@ def validate_consensus_boundaries() -> None:
             "verify_witness_program",
         ),
         "script authorization",
+    )
+
+    claim_source = read_text(ROOT / "hsrd/crates/hns-consensus/src/claim.rs")
+    gost_source = read_text(ROOT / "hsrd/crates/hns-consensus/src/gost94.rs")
+    require_tokens(
+        claim_source,
+        ("digest_type == 3", "crate::gost94::digest", "ALG_ED448"),
+        "DNSSEC claim cryptography",
+    )
+    require_tokens(
+        gost_source,
+        ("S_CRYPTOPRO", "fn compress", "fn psi", "fn add_block"),
+        "GOST94 DS digest",
     )
 
     state_source = read_text(ROOT / "hsrd/crates/hns-state/src/lib.rs")

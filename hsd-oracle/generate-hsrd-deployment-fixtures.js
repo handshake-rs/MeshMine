@@ -267,9 +267,136 @@ function historicalCases() {
   return cases;
 }
 
+async function historicalValidationCases() {
+  const network = Network.get('main');
+  const heights = [1, network.lastCheckpoint, network.lastCheckpoint + 1];
+  const cases = [];
+
+  for (const checkpoints of [false, true]) {
+    for (const height of heights) {
+      const previous = {
+        height: height - 1,
+        hash: Buffer.alloc(32, height & 0xff)
+      };
+      const options = {checkpoints, spv: false};
+      const historical = Chain.prototype.isHistorical.call(
+        {network, options},
+        previous
+      );
+      const bodyCalls = [];
+      const stopAfterBody = new Error('stop after historical body route');
+      const merkleRoot = Buffer.alloc(32, 0x31);
+      const witnessRoot = Buffer.alloc(32, 0x32);
+      const block = {
+        prevBlock: previous.hash,
+        merkleRoot,
+        witnessRoot,
+        txs: [],
+        hash() {
+          return Buffer.alloc(32, 0x33);
+        },
+        createMerkleRoot() {
+          bodyCalls.push('merkle-root');
+          return merkleRoot;
+        },
+        createWitnessRoot() {
+          bodyCalls.push('witness-root');
+          return witnessRoot;
+        },
+        checkBody() {
+          bodyCalls.push('full-body');
+          return [true, 'valid', 0];
+        }
+      };
+      const bodyChain = {
+        network,
+        options,
+        verifyCheckpoint() {
+          return true;
+        },
+        isHistorical(prev) {
+          return Chain.prototype.isHistorical.call(this, prev);
+        },
+        async getTarget() {
+          throw stopAfterBody;
+        }
+      };
+      await assert.rejects(
+        Chain.prototype.verify.call(
+          bodyChain,
+          block,
+          previous,
+          chainCommon.flags.VERIFY_BODY
+        ),
+        error => error === stopAfterBody
+      );
+
+      const inputCalls = [];
+      const contextChain = {
+        network,
+        options,
+        async verify() {
+          return {};
+        },
+        isHistorical(prev) {
+          return Chain.prototype.isHistorical.call(this, prev);
+        },
+        async updateInputs() {
+          inputCalls.push('historical-inputs');
+          return {};
+        },
+        async verifyInputs() {
+          inputCalls.push('full-inputs');
+          return {};
+        }
+      };
+      await Chain.prototype.verifyContext.call(
+        contextChain,
+        block,
+        previous,
+        chainCommon.flags.VERIFY_BODY
+      );
+
+      const fullInputs = inputCalls.length === 1
+        && inputCalls[0] === 'full-inputs';
+      const commitmentsOnly = bodyCalls.length === 2
+        && bodyCalls[0] === 'merkle-root'
+        && bodyCalls[1] === 'witness-root';
+      assert.strictEqual(historical, commitmentsOnly);
+      assert.strictEqual(historical, !fullInputs);
+
+      cases.push({
+        checkpoints,
+        height,
+        historical,
+        bodySanity: !historical,
+        bodyCommitments: true,
+        nameLimits: true,
+        headerContext: true,
+        deploymentState: true,
+        absoluteFinality: true,
+        claimAirdropSanity: true,
+        claimAirdropCryptography: fullInputs,
+        sequenceLocks: fullInputs,
+        inputValues: fullInputs,
+        covenantLinks: fullInputs,
+        contextualCovenants: true,
+        bidRedeemContext: !Chain.prototype.isHistoricalHeight.call(
+          {network, options},
+          height
+        ),
+        scripts: fullInputs,
+        coinbaseReward: fullInputs
+      });
+    }
+  }
+
+  return cases;
+}
+
 async function makeFixture() {
   return {
-    schema: 1,
+    schema: 2,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: REVISION
@@ -282,7 +409,8 @@ async function makeFixture() {
     thresholdVectors: await makeThresholdVectors(),
     blockVersionCase: await makeBlockVersionCase(),
     deploymentEffectCases: await makeDeploymentEffectCases(),
-    historicalCases: historicalCases()
+    historicalCases: historicalCases(),
+    historicalValidationCases: await historicalValidationCases()
   };
 }
 

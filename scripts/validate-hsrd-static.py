@@ -468,6 +468,20 @@ def validate_consensus_boundaries() -> None:
         "script authorization",
     )
 
+    deployment_source = read_text(
+        ROOT / "hsrd/crates/hns-consensus/src/deployment.rs"
+    )
+    require_tokens(
+        deployment_source,
+        (
+            "pub struct HistoricalValidationPlan",
+            "HistoricalValidationPlan::hsd_checkpointed()",
+            "compute_block_version_from_state",
+            "historical_validation_plan_matches_hsd_routes_and_fails_closed",
+        ),
+        "historical deployment validation",
+    )
+
     claim_source = read_text(ROOT / "hsrd/crates/hns-consensus/src/claim.rs")
     gost_source = read_text(ROOT / "hsrd/crates/hns-consensus/src/gost94.rs")
     require_tokens(

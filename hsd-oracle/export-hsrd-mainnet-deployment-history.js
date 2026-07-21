@@ -25,7 +25,7 @@ const OUTPUT = path.join(
   ROOT,
   'hsrd/fixtures/hsd/chains/mainnet-deployment-history-v1.json'
 );
-const THROUGH_HEIGHT = 336672;
+const THROUGH_HEIGHT = 338688;
 const STATE_NAMES = Object.freeze([
   'DEFINED',
   'STARTED',
@@ -148,7 +148,11 @@ async function deploymentResult(chain, previous, candidateTime) {
     candidateTime,
     previous
   );
-  return {states, effects: effectJson(effects)};
+  const blockVersion = await Chain.prototype.computeBlockVersion.call(
+    chain,
+    previous
+  );
+  return {states, effects: effectJson(effects), blockVersion};
 }
 
 function historicalResult(network, candidateHeight) {
@@ -269,6 +273,7 @@ async function fetchFixture(prefix) {
         signalling,
         states: result.states,
         effects: result.effects,
+        nextBlockVersion: result.blockVersion,
         ...historicalResult(network, nextHeight)
       });
       boundaries.set(end, previous);
@@ -296,7 +301,7 @@ async function fetchFixture(prefix) {
 
     const anchor = historicalBoundaries.at(-1);
     return {
-      schema: 1,
+      schema: 2,
       oracle: {
         repository: 'handshake-org/hsd',
         revision: REVISION,
@@ -340,7 +345,7 @@ function syntheticPeriod(period, deployments, window) {
 }
 
 async function validateFixture(fixture) {
-  assert.strictEqual(fixture.schema, 1);
+  assert.strictEqual(fixture.schema, 2);
   assert.deepStrictEqual(fixture.oracle, {
     repository: 'handshake-org/hsd',
     revision: REVISION,
@@ -400,6 +405,11 @@ async function validateFixture(fixture) {
       result.effects,
       period.effects,
       `deployment effects mismatch at height ${nextHeight}`
+    );
+    assert.strictEqual(
+      result.blockVersion,
+      period.nextBlockVersion,
+      `next block version mismatch at height ${nextHeight}`
     );
     assert.deepStrictEqual(
       {

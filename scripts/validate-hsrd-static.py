@@ -600,6 +600,16 @@ def validate_consensus_boundaries() -> None:
         "Urkel foundation",
     )
 
+    require_tokens(
+        state_source,
+        (
+            "pub struct MaterializedNameTreeSnapshot",
+            "pub fn materialize_name_tree_snapshot",
+            "materialized_name_tree_proofs_are_snapshot_and_restart_stable",
+        ),
+        "durable materialized name-tree proofs",
+    )
+
 
 def validate_shadow_sync() -> None:
     p2p_root = ROOT / "hsrd/crates/hns-p2p/src"

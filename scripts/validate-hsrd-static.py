@@ -342,9 +342,13 @@ def validate_schema_coordination() -> None:
     require_tokens(
         node_source,
         (
+            "HSRD_DIAGNOSTIC_API_VERSION: u32 = 7",
             "store_validated_alternate",
             "store_failed_block",
             "best_chain_activation_plan",
+            "apply_reorg_classified",
+            "ContextualActivationFailure",
+            "StateConnectError",
             "validate_reorg_plan",
             "validate_reorg_request_shape",
             "stage_best_header_if_more_work",
@@ -359,9 +363,28 @@ def validate_schema_coordination() -> None:
             "crosses pruned undo history",
             "replacement tip chainwork",
             "failed_block_count",
+            "active_state_sync_enabled",
+            "active_state_connect_batch",
             "invalid_branch_is_durable_falls_back_and_taints_descendants",
+            "shadow_active_state_connector_resumes_in_bounded_batches_without_authority",
+            "shadow_active_state_runtime_updates_scheduler_and_diagnostics",
+            "shadow_active_state_connector_reorganizes_a_stored_best_branch",
+            "contextual_invalid_ancestor_is_durable_and_exact",
+            "local_state_fault_does_not_poison_a_stored_branch",
         ),
         "best-chain activation",
+    )
+
+    state_source = read_text(ROOT / "hsrd/crates/hns-state/src/lib.rs")
+    require_tokens(
+        state_source,
+        (
+            "pub fn is_consensus_invalid(&self)",
+            "consensus_invalid_classifier_excludes_local_state_faults",
+            "Self::HeaderTreeRootMismatch",
+            "Self::MissingCoin",
+        ),
+        "contextual invalid/local fault separation",
     )
 
     testkit_source = read_text(ROOT / "hsrd/crates/hns-testkit/src/lib.rs")
@@ -813,21 +836,25 @@ def validate_shadow_sync() -> None:
     require_tokens(
         shadow_sync,
         (
-            "Shadow sync live P2P is observation-only",
+            "Shadow sync live P2P is non-authoritative",
             "MAX_SHADOW_SYNC_PEERS",
             "MAX_SHADOW_SYNC_VALIDATION_WORKERS",
             "MAX_SHADOW_SYNC_VALIDATION_QUEUE",
             "MAX_SHADOW_SYNC_ORPHAN_BLOCKS",
             "MAX_SHADOW_SYNC_ORPHAN_BYTES",
+            "MAX_ACTIVE_STATE_CONNECT_BATCH",
             "MIN_SHADOW_SYNC_POLL_INTERVAL",
             "store_validated_alternate",
             "shadow_sync_queue_missing_canonical_bodies",
             "spawn_validation_pipeline",
             "stored_failed_bodies",
             "discard_orphan_descendants",
+            "shadow_sync_connect_stored_state",
+            "connect_stored_active_state",
+            "contextual_failed_bodies",
             "body_validator_only_marks_header_committed_invalidity_permanent",
             "PersistCheckpoint",
-            "observation_only: true",
+            "observation_only: !shadow_sync_config.connect_active_state",
             '"/api/v1/shadow-sync"',
             "handle_shadow_sync_diagnostics",
             '"/api/v1/mining-engine"',
@@ -835,8 +862,8 @@ def validate_shadow_sync() -> None:
         ),
         "Shadow sync node supervisor",
     )
-    if "activate_best_chain" in shadow_sync or "submit_mining_candidate" in shadow_sync:
-        fail("Shadow sync observation path contains an authority or active-chain entrypoint")
+    if "submit_mining_candidate" in shadow_sync:
+        fail("Shadow sync path contains a mining-authority entrypoint")
 
     node_lib = read_text(ROOT / "hsrd/crates/hns-node/src/lib.rs")
     require_tokens(
@@ -855,6 +882,8 @@ def validate_shadow_sync() -> None:
         main_source,
         (
             "shadow_sync: bool",
+            "shadow_sync_active_state: bool",
+            "active_state_connect_batch: usize",
             "shadow_sync_poll_ms: u64",
             "compact_name_tree_on_startup: bool",
             "name_tree_compaction_interval: u32",

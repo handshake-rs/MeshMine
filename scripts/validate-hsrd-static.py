@@ -330,7 +330,9 @@ def validate_schema_coordination() -> None:
             "COVENANT_LINKS_VALID",
             "COVENANTS_CONTEXT_VALID",
             "plan_reorg_between",
+            "plan_failed_branch",
             "MissingBestHeaderBinding",
+            "InconsistentFailureAncestry",
             "record.chainwork > best.chainwork",
         ),
         "chain/status safety",
@@ -341,6 +343,7 @@ def validate_schema_coordination() -> None:
         node_source,
         (
             "store_validated_alternate",
+            "store_failed_block",
             "best_chain_activation_plan",
             "validate_reorg_plan",
             "validate_reorg_request_shape",
@@ -355,6 +358,8 @@ def validate_schema_coordination() -> None:
             "prune_undo_history_to_policy",
             "crosses pruned undo history",
             "replacement tip chainwork",
+            "failed_block_count",
+            "invalid_branch_is_durable_falls_back_and_taints_descendants",
         ),
         "best-chain activation",
     )
@@ -780,6 +785,30 @@ def validate_shadow_sync() -> None:
         "Shadow sync composition",
     )
 
+    validation = read_text(sync_root / "validation.rs")
+    require_tokens(
+        validation,
+        (
+            "ValidationFailureKind::InvalidBlock",
+            "ValidationFailureKind::InvalidResponse",
+            "ValidationFailureKind::WorkerFailure",
+            "ValidationRejection::invalid_response",
+        ),
+        "Shadow sync validation failure classification",
+    )
+
+    scheduler = read_text(sync_root / "scheduler.rs")
+    require_tokens(
+        scheduler,
+        (
+            "retry_validation_failure",
+            "local_validation_failure_retries_without_blaming_peer",
+            "bad_validation_response_fails_over_and_blames_only_its_peer",
+            "permanent_rejection_removes_pending_descendant",
+        ),
+        "Shadow sync validation retry accounting",
+    )
+
     shadow_sync = read_text(ROOT / "hsrd/crates/hns-node/src/shadow_sync.rs")
     require_tokens(
         shadow_sync,
@@ -794,6 +823,9 @@ def validate_shadow_sync() -> None:
             "store_validated_alternate",
             "shadow_sync_queue_missing_canonical_bodies",
             "spawn_validation_pipeline",
+            "stored_failed_bodies",
+            "discard_orphan_descendants",
+            "body_validator_only_marks_header_committed_invalidity_permanent",
             "PersistCheckpoint",
             "observation_only: true",
             '"/api/v1/shadow-sync"',

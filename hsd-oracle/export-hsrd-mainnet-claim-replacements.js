@@ -1,10 +1,11 @@
 'use strict';
 
-// Export and verify a bounded canonical mainnet history containing ten
-// initial DNSSEC claims and the later coinbase which replaced all ten. The
-// refresh path combines archival block bytes with checkpoint-linked headers
-// from a locally synchronized HSD node. Offline checking replays every byte
-// and ownership proof through the pinned HSD implementation.
+// Export and verify bounded canonical mainnet claim histories: ten initial
+// DNSSEC claims and their first replacements, a complete three-generation
+// replacement lineage, and the final accepted claim before the claim-period
+// boundary. The refresh path combines archival block bytes with
+// checkpoint-linked headers from a locally synchronized HSD node. Offline
+// checking replays every byte and ownership proof through pinned HSD.
 
 process.env.NODE_BACKEND = process.env.NODE_BACKEND || 'js';
 
@@ -17,9 +18,11 @@ const blake2b = require('bcrypto/lib/blake2b');
 const Block = require('hsd/lib/primitives/block');
 const ChainEntry = require('hsd/lib/blockchain/chainentry');
 const Headers = require('hsd/lib/primitives/headers');
+const TX = require('hsd/lib/primitives/tx');
 const Network = require('hsd/lib/protocol/network');
 const OwnershipProof = require('hsd/lib/covenants/ownership').Proof;
 const consensus = require('hsd/lib/protocol/consensus');
+const rules = require('hsd/lib/covenants/rules');
 
 const REVISION = '698e252ebc7b5c1dd0a9587e342fdd153d020ae4';
 const ROOT = path.resolve(__dirname, '..');
@@ -32,10 +35,25 @@ const DEFAULT_ARCHIVE_BASE = 'https://hsd.hns.au/api/v1';
 const MAX_ARCHIVE_RESPONSE = 8 * 1024 * 1024;
 const INITIAL_HEIGHTS = [39086, 39090, 39092, 39095, 39098, 39099, 39101];
 const REPLACEMENT_HEIGHT = 76722;
-const BLOCK_HEIGHTS = [...INITIAL_HEIGHTS, REPLACEMENT_HEIGHT];
+const LIFECYCLE_NAME = 'mylinksfree';
+const LIFECYCLE_HEIGHTS = [55798, 177097, 178235];
+const TERMINAL_NAME = 'vcel';
+const TERMINAL_HEIGHT = 210237;
+const CLAIM_PERIOD_HEIGHT = 210240;
+const BLOCK_HEIGHTS = [
+  ...INITIAL_HEIGHTS,
+  LIFECYCLE_HEIGHTS[0],
+  REPLACEMENT_HEIGHT,
+  ...LIFECYCLE_HEIGHTS.slice(1),
+  TERMINAL_HEIGHT
+];
+const ARCHIVE_HEIGHTS = [...BLOCK_HEIGHTS, CLAIM_PERIOD_HEIGHT];
 const SEGMENTS = [
   {checkpointHeight: 30000, endHeight: 39101},
-  {checkpointHeight: 61043, endHeight: REPLACEMENT_HEIGHT}
+  {checkpointHeight: 50000, endHeight: LIFECYCLE_HEIGHTS[0]},
+  {checkpointHeight: 61043, endHeight: REPLACEMENT_HEIGHT},
+  {checkpointHeight: 160000, endHeight: LIFECYCLE_HEIGHTS.at(-1)},
+  {checkpointHeight: 200000, endHeight: CLAIM_PERIOD_HEIGHT}
 ];
 const REPLACEMENTS = [
   {name: 'pinoynewsfeed', initialHeight: 39090, initialIndex: 6, replacementIndex: 1},
@@ -216,6 +234,20 @@ function blockClaims(block, parentTime, network) {
   return claims;
 }
 
+function blockRole(height) {
+  if (INITIAL_HEIGHTS.includes(height))
+    return 'initial';
+  if (height === REPLACEMENT_HEIGHT)
+    return 'replacement';
+  if (height === LIFECYCLE_HEIGHTS[0])
+    return 'lifecycle-initial';
+  if (LIFECYCLE_HEIGHTS.includes(height))
+    return 'lifecycle-replacement';
+  if (height === TERMINAL_HEIGHT)
+    return 'terminal';
+  throw new Error(`unclassified claim-history block ${height}`);
+}
+
 function contextRecord(height, entries, checkpointHeight) {
   const index = height - checkpointHeight;
   const parents = entries.slice(index - MEDIAN_TIMESPAN, index);
@@ -231,9 +263,7 @@ function contextRecord(height, entries, checkpointHeight) {
 
 function blockRecord(block, context, network) {
   return {
-    role: block.getCoinbaseHeight() === REPLACEMENT_HEIGHT
-      ? 'replacement'
-      : 'initial',
+    role: blockRole(block.getCoinbaseHeight()),
     height: block.getCoinbaseHeight(),
     hash: block.hash().toString('hex'),
     raw: block.encode().toString('hex'),
@@ -243,6 +273,71 @@ function blockRecord(block, context, network) {
     transactionCount: block.txs.length,
     coinbaseTxid: block.txs[0].txid(),
     claims: blockClaims(block, context.parentTime, network)
+  };
+}
+
+function claimPoint(block, claim) {
+  return {
+    role: block.role,
+    blockHeight: block.height,
+    coinbaseTxid: block.coinbaseTxid,
+    outputIndex: claim.outputIndex,
+    outputValue: claim.outputValue,
+    reservedValue: claim.reservedValue,
+    fee: claim.fee,
+    commitHash: claim.commitHash,
+    commitHeight: claim.commitHeight,
+    weak: claim.weak,
+    conjured: claim.conjured
+  };
+}
+
+function onlyNamedClaim(block, name) {
+  const claims = block.claims.filter(claim => claim.name === name);
+  assert.strictEqual(claims.length, 1,
+    `${block.height} must contain one ${name} claim`);
+  return claims[0];
+}
+
+function boundaryRecord(block, entry, parent) {
+  const coinbase = block.txs[0];
+  return {
+    blockHeight: CLAIM_PERIOD_HEIGHT,
+    blockHash: block.hash().toString('hex'),
+    header: headerJson(entry),
+    parentHeader: headerJson(parent),
+    parentTime: parent.time,
+    coinbaseTxid: coinbase.txid(),
+    coinbaseRaw: coinbase.encode().toString('hex'),
+    claimCount: blockClaims(block, entry.time, Network.get('main')).length
+  };
+}
+
+function buildLifecycle(blocks, boundary) {
+  const byHeight = new Map(blocks.map(block => [block.height, block]));
+  const lineage = LIFECYCLE_HEIGHTS.map(height => {
+    const block = byHeight.get(height);
+    assert(block, `${LIFECYCLE_NAME} block ${height}`);
+    return {block, claim: onlyNamedClaim(block, LIFECYCLE_NAME)};
+  });
+  const terminalBlock = byHeight.get(TERMINAL_HEIGHT);
+  assert(terminalBlock, 'terminal claim block');
+  const terminalClaim = onlyNamedClaim(terminalBlock, TERMINAL_NAME);
+
+  return {
+    claimPeriodHeight: CLAIM_PERIOD_HEIGHT,
+    lineage: {
+      name: LIFECYCLE_NAME,
+      nameHash: lineage[0].claim.nameHash,
+      points: lineage.map(({block, claim}) => claimPoint(block, claim))
+    },
+    terminal: {
+      name: TERMINAL_NAME,
+      nameHash: terminalClaim.nameHash,
+      blocksBeforeClaimPeriod: CLAIM_PERIOD_HEIGHT - TERMINAL_HEIGHT,
+      point: claimPoint(terminalBlock, terminalClaim)
+    },
+    boundary
   };
 }
 
@@ -285,7 +380,7 @@ function buildHistory(blocks) {
 }
 
 function validateFixture(fixture) {
-  assert.strictEqual(fixture.schema, 1);
+  assert.strictEqual(fixture.schema, 2);
   assert.deepStrictEqual(fixture.oracle, {
     repository: 'handshake-org/hsd',
     revision: REVISION,
@@ -306,7 +401,7 @@ function validateFixture(fixture) {
 
   assert.deepStrictEqual(
     fixture.canonicalContext.commitHeaders.map(header => header.height),
-    [1, 2]
+    [1, 2, 3]
   );
   const commits = fixture.canonicalContext.commitHeaders.map(decodeHeader);
 
@@ -382,6 +477,59 @@ function validateFixture(fixture) {
   assert.strictEqual(fixture.history.length, REPLACEMENTS.length);
   assert(fixture.history.every(item => item.initial.commitHeight === 1));
   assert(fixture.history.every(item => item.replacement.commitHeight === 2));
+
+  const lifecycle = fixture.lifecycle;
+  assert.deepStrictEqual(
+    lifecycle,
+    buildLifecycle(rebuilt, lifecycle.boundary)
+  );
+  assert.deepStrictEqual(fixture.lifecycle, lifecycle);
+  assert.strictEqual(network.names.claimPeriod, CLAIM_PERIOD_HEIGHT);
+  assert.deepStrictEqual(
+    lifecycle.lineage.points.map(point => point.commitHeight),
+    [1, 2, 3]
+  );
+  assert(lifecycle.lineage.points.every((point, index) =>
+    point.commitHash === commits[index].hash().toString('hex')));
+  assert(lifecycle.lineage.points.slice(1).every(point =>
+    point.outputValue === lifecycle.lineage.points[0].outputValue));
+  assert(lifecycle.lineage.points.slice(1).every(point =>
+    point.conjured === point.outputValue));
+  assert(
+    lifecycle.lineage.points[2].blockHeight
+      - lifecycle.lineage.points[1].blockHeight
+      >= network.names.claimFrequency,
+    'third-generation claim must satisfy replacement frequency'
+  );
+  assert.strictEqual(lifecycle.terminal.point.commitHeight, 1);
+  assert.strictEqual(lifecycle.terminal.point.blockHeight, CLAIM_PERIOD_HEIGHT - 3);
+  assert.strictEqual(lifecycle.boundary.blockHeight, CLAIM_PERIOD_HEIGHT);
+  const boundaryHeader = decodeHeader(lifecycle.boundary.header);
+  const boundaryParent = decodeHeader(lifecycle.boundary.parentHeader);
+  assert.strictEqual(boundaryHeader.hash().toString('hex'),
+    lifecycle.boundary.blockHash);
+  assert(boundaryHeader.prevBlock.equals(boundaryParent.hash()),
+    'claim-period boundary parent link');
+  assert.strictEqual(lifecycle.boundary.parentTime, boundaryParent.time);
+  const boundaryCoinbase = TX.decode(
+    Buffer.from(lifecycle.boundary.coinbaseRaw, 'hex')
+  );
+  assert.strictEqual(boundaryCoinbase.encode().toString('hex'),
+    lifecycle.boundary.coinbaseRaw);
+  assert.strictEqual(boundaryCoinbase.txid(), lifecycle.boundary.coinbaseTxid);
+  assert.strictEqual(boundaryCoinbase.locktime, CLAIM_PERIOD_HEIGHT);
+  assert.strictEqual(lifecycle.boundary.claimCount, 0);
+  assert(boundaryCoinbase.outputs.every(output => !output.covenant.isClaim()));
+  assert(rules.isReserved(
+    Buffer.from(lifecycle.terminal.nameHash, 'hex'),
+    lifecycle.terminal.point.blockHeight,
+    network
+  ));
+  assert(!rules.isReserved(
+    Buffer.from(lifecycle.terminal.nameHash, 'hex'),
+    lifecycle.claimPeriodHeight,
+    network
+  ));
 }
 
 async function fetchFixture(prefix, archiveBase) {
@@ -397,10 +545,10 @@ async function fetchFixture(prefix, archiveBase) {
     'HSD RPC port is invalid');
 
   const base = archiveBase.replace(/\/$/, '');
-  const jsonBlocks = await Promise.all(BLOCK_HEIGHTS.map(height =>
+  const jsonBlocks = await Promise.all(ARCHIVE_HEIGHTS.map(height =>
     fetchJson(`${base}/block/${height}`)));
   const blocks = jsonBlocks.map((json, blockIndex) => {
-    const height = BLOCK_HEIGHTS[blockIndex];
+    const height = ARCHIVE_HEIGHTS[blockIndex];
     assert.strictEqual(json.height, height,
       `archival API returned the wrong height for ${height}`);
     const block = Block.fromJSON(json);
@@ -419,8 +567,8 @@ async function fetchFixture(prefix, archiveBase) {
   try {
     const info = await client.getInfo();
     assert(info && info.network === 'main', 'HSD RPC network must be mainnet');
-    assert(info.chain && info.chain.height >= REPLACEMENT_HEIGHT,
-      `HSD must be synchronized through height ${REPLACEMENT_HEIGHT}`);
+    assert(info.chain && info.chain.height >= CLAIM_PERIOD_HEIGHT,
+      `HSD must be synchronized through height ${CLAIM_PERIOD_HEIGHT}`);
     const network = Network.get('main');
 
     const segments = [];
@@ -459,19 +607,39 @@ async function fetchFixture(prefix, archiveBase) {
         `archival block ${height} is not locally canonical`);
     }
 
-    const commitRaws = await client.getEntries(1, 2);
-    assert.strictEqual(commitRaws.length, 2, 'HSD commit headers');
+    const commitRaws = await client.getEntries(1, 3);
+    assert.strictEqual(commitRaws.length, 3, 'HSD commit headers');
     const commitHeaders = commitRaws.map(raw => ChainEntry.decode(raw));
     const contexts = BLOCK_HEIGHTS.map(height => {
       const segment = segments.find(item =>
         height >= item.checkpointHeight && height <= item.endHeight);
       return contextRecord(height, segment.entries, segment.checkpointHeight);
     });
-    const records = blocks.map((block, index) =>
+    const historicalBlocks = blocks.filter(block =>
+      block.getCoinbaseHeight() !== CLAIM_PERIOD_HEIGHT);
+    const records = historicalBlocks.map((block, index) =>
       blockRecord(block, contexts[index], network));
+    const boundaryBlock = blocks.find(block =>
+      block.getCoinbaseHeight() === CLAIM_PERIOD_HEIGHT);
+    assert(boundaryBlock, 'claim-period boundary block');
+    const boundarySegment = segments.find(segment =>
+      CLAIM_PERIOD_HEIGHT >= segment.checkpointHeight
+        && CLAIM_PERIOD_HEIGHT <= segment.endHeight);
+    assert(boundarySegment, 'claim-period boundary segment');
+    const boundaryEntry = boundarySegment.entries[
+      CLAIM_PERIOD_HEIGHT - boundarySegment.checkpointHeight
+    ];
+    const boundaryParent = boundarySegment.entries[
+      CLAIM_PERIOD_HEIGHT - boundarySegment.checkpointHeight - 1
+    ];
+    const boundary = boundaryRecord(
+      boundaryBlock,
+      boundaryEntry,
+      boundaryParent
+    );
 
     return {
-      schema: 1,
+      schema: 2,
       oracle: {
         repository: 'handshake-org/hsd',
         revision: REVISION,
@@ -489,6 +657,7 @@ async function fetchFixture(prefix, archiveBase) {
         blocks: contexts
       },
       history: buildHistory(records),
+      lifecycle: buildLifecycle(records, boundary),
       blocks: records
     };
   } finally {

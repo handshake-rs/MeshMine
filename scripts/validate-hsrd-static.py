@@ -419,6 +419,19 @@ def validate_oracle_revision() -> None:
         if HSD_REVISION not in read_text(path):
             fail(f"declared oracle revision is missing from {path.relative_to(ROOT)}")
 
+    replacement_exporter = read_text(
+        ROOT / "hsd-oracle/export-hsrd-mainnet-claim-replacements.js"
+    )
+    require_tokens(
+        replacement_exporter,
+        (
+            "const LIFECYCLE_HEIGHTS = [55798, 177097, 178235]",
+            "const TERMINAL_HEIGHT = 210237",
+            "const CLAIM_PERIOD_HEIGHT = 210240",
+        ),
+        "mainnet claim lifecycle exporter",
+    )
+
     package_scripts = package.get("scripts", {})
     check_scripts = (
         "hsrd-script-fixtures",
@@ -492,6 +505,7 @@ def validate_consensus_boundaries() -> None:
             "ALG_ED448",
             "proof.verify_time(parent_time)",
             "parent block time",
+            "native_claim_validation_matches_terminal_and_third_generation_history",
         ),
         "DNSSEC claim cryptography",
     )
@@ -536,6 +550,7 @@ def validate_consensus_boundaries() -> None:
             "AirdropCoinbaseIssuanceVerifier",
             "NativeAirdropSignatureVerifier::new()",
             "chain_context.block_time(request.height - 1)?",
+            "canonical_mainnet_terminal_and_third_generation_claims_replay",
         ),
         "state transition",
     )

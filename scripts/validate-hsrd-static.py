@@ -342,7 +342,7 @@ def validate_schema_coordination() -> None:
     require_tokens(
         node_source,
         (
-            "HSRD_DIAGNOSTIC_API_VERSION: u32 = 7",
+            "HSRD_DIAGNOSTIC_API_VERSION: u32 = 8",
             "store_validated_alternate",
             "store_failed_block",
             "best_chain_activation_plan",
@@ -365,6 +365,8 @@ def validate_schema_coordination() -> None:
             "failed_block_count",
             "active_state_sync_enabled",
             "active_state_connect_batch",
+            "active_state_resulting_root",
+            "active_state_resulting_root_height",
             "invalid_branch_is_durable_falls_back_and_taints_descendants",
             "shadow_active_state_connector_resumes_in_bounded_batches_without_authority",
             "shadow_active_state_runtime_updates_scheduler_and_diagnostics",
@@ -855,6 +857,7 @@ def validate_shadow_sync() -> None:
             "body_validator_only_marks_header_committed_invalidity_permanent",
             "PersistCheckpoint",
             "observation_only: !shadow_sync_config.connect_active_state",
+            "runtime_instance: runtime_instance_id()",
             '"/api/v1/shadow-sync"',
             "handle_shadow_sync_diagnostics",
             '"/api/v1/mining-engine"',
@@ -864,6 +867,27 @@ def validate_shadow_sync() -> None:
     )
     if "submit_mining_candidate" in shadow_sync:
         fail("Shadow sync path contains a mining-authority entrypoint")
+
+    comparison = read_text(ROOT / "scripts/compare-hsrd-hsd-shadow.py")
+    require_tokens(
+        comparison,
+        (
+            "MINIMUM_HSRD_API_VERSION = 8",
+            "active_state_resulting_root",
+            'root_source = "next-header"',
+            'root_source = "next-template"',
+            "root_confirmed_by_next_header",
+            "previous_still_canonical",
+            "hsrd_restart_observed",
+            "validate_hsd_source",
+            "observation_id",
+            "checkpoint_id",
+            "write_evidence_state",
+            "--allow-remote-hsrd",
+            "--self-test",
+        ),
+        "live hsrd/HSD shadow comparison",
+    )
 
     node_lib = read_text(ROOT / "hsrd/crates/hns-node/src/lib.rs")
     require_tokens(

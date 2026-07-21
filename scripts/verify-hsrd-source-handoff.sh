@@ -14,6 +14,7 @@ python3 scripts/validate-work-fabric-source.py
 python3 scripts/validate-operator-service-source.py
 python3 scripts/validate-core-link-source.py
 python3 scripts/validate-live-parent-and-unified-operator-source.py
+python3 scripts/compare-hsrd-hsd-shadow.py --self-test
 node scripts/verify-operator-receipt-fixture.js
 
 node hsd-oracle/audit-dependencies.js --allow-unavailable
@@ -65,7 +66,8 @@ python3 -m py_compile \
   scripts/validate-work-fabric-source.py \
   scripts/validate-operator-service-source.py \
   scripts/validate-core-link-source.py \
-  scripts/validate-live-parent-and-unified-operator-source.py
+  scripts/validate-live-parent-and-unified-operator-source.py \
+  scripts/compare-hsrd-hsd-shadow.py
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git diff --check

@@ -510,6 +510,7 @@ def validate_consensus_boundaries() -> None:
             "stage_name_tree_with_overrides",
             "prove_persisted_name_tree",
             "validate_persisted_name_tree",
+            "validate_persisted_name_tree_root",
             "MetaKey::NameTreeRoot",
             "HeaderTreeRootMismatch",
             "previous_tree_root",
@@ -546,9 +547,16 @@ def validate_consensus_boundaries() -> None:
         if not (ROOT / "hsrd/vendor/goosig" / relative).is_file():
             fail(f"vendored Goosig source is missing {relative}")
 
-    connect_root_check = state_source.find("let inherited_tree_root = verify_stored_name_tree_root")
+    connect_root_check = state_source.find("let inherited_tree_root = load_stored_name_tree_root")
+    root_record_check = state_source.find(
+        "validate_persisted_name_tree_root(snapshot, inherited_tree_root)"
+    )
     transition_start = state_source.find("for (transaction_index, transaction)")
-    if connect_root_check < 0 or transition_start < 0 or connect_root_check > transition_start:
+    if (
+        connect_root_check < 0
+        or root_record_check < connect_root_check
+        or transition_start < root_record_check
+    ):
         fail("block header name-tree commitment is not verified before state mutation")
 
     if "if state.is_null()" not in state_source or "ColumnFamily::NameState" not in state_source:
@@ -598,12 +606,17 @@ def validate_consensus_boundaries() -> None:
             "pub struct MemoryUrkel",
             "pub fn root_from_entries",
             "pub enum UrkelNodeRecord",
+            "pub struct UrkelRecordUpdate",
+            "pub fn update_record_tree",
             "pub fn prove_hsd_from_records",
+            "pub fn validate_record_root",
             "pub fn validate_record_tree",
             "pub struct UnavailableNameTree",
             "pub struct NativeUrkelVerifier",
             "exact_roots_match_the_pinned_hsd_urkel_fixture",
             "exact_proofs_match_the_pinned_hsd_urkel_fixture",
+            "record_updates_and_removals_are_path_local_and_history_independent",
+            "deterministic_mixed_record_mutations_match_rebuild_oracle",
         ),
         "Urkel foundation",
     )
@@ -615,6 +628,8 @@ def validate_consensus_boundaries() -> None:
             "pub fn materialize_name_tree_snapshot",
             "materialized_name_tree_proofs_are_snapshot_and_restart_stable",
             "persisted_name_tree_proofs_survive_restart_and_reject_node_faults",
+            "staged_name_tree_mutation_is_path_local_and_matches_rebuild_oracle",
+            "multi_step_overlay_reads_incremental_nodes_and_retains_historical_roots",
         ),
         "durable name-tree proofs",
     )

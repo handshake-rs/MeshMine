@@ -76,6 +76,10 @@ jobs:
         run: npm run hsrd-script-fixtures --prefix hsd-oracle
       - name: Reproduce HSD deployment fixtures
         run: npm run hsrd-deployment-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD airdrop fixtures
+        run: npm run hsrd-airdrop-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD claim fixtures
+        run: npm run hsrd-claim-fixtures --prefix hsd-oracle
       - name: Reproduce HSD covenant fixtures
         run: npm run hsrd-covenant-fixtures --prefix hsd-oracle
       - name: Reproduce HSD NameState codec fixtures

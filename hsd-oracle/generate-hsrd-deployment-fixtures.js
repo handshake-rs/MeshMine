@@ -232,6 +232,9 @@ function networkJson(name) {
     name,
     activationThreshold: network.activationThreshold,
     minerWindow: network.minerWindow,
+    goosigStop: network.goosigStop,
+    deflationHeight: network.deflationHeight,
+    claimPrefix: network.claimPrefix,
     lastCheckpoint: network.lastCheckpoint,
     checkpoints: network.checkpoints.map(checkpoint => ({
       height: checkpoint.height,

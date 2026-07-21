@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HSD_REVISION = "698e252ebc7b5c1dd0a9587e342fdd153d020ae4"
 HSD_REPOSITORY = "handshake-org/hsd"
 MANIFEST_PATH = ROOT / "hsrd/fixtures/hsd/manifest-v1.json"
-EXPECTED_STORE_SCHEMA = 9
-EXPECTED_STORAGE_PROFILE = "hsrd-mining-v5"
+EXPECTED_STORE_SCHEMA = 11
+EXPECTED_STORAGE_PROFILE = "hsrd-mining-v7"
 SKIP_PARTS = {".git", "node_modules", "target", "__pycache__"}
 
 
@@ -237,7 +237,6 @@ def validate_authority_safety() -> None:
         fail("NodeBlockImport fixture constructor must not be public")
 
     forbidden_literal_completions = (
-        ".deployment_state_valid = true",
         ".tree_root_valid = true",
         ".claims_and_airdrops_valid = true",
     )
@@ -256,6 +255,11 @@ def validate_authority_safety() -> None:
             "fn issue_authority_permit",
             "mark_unclean_start",
             "mark_clean_shutdown",
+            "let deployments = self.deployment_state_for_block(",
+            "write_deployment_state(",
+            "name_flags: deployments.name_flags",
+            "status.deployment_state_valid = true",
+            'b"deployment-state/v1/"',
         ),
         "authority safety",
     )
@@ -301,9 +305,11 @@ def validate_schema_coordination() -> None:
             "pub struct StagingOverlay",
             "schema marker exists without a storage-profile marker",
             "schema marker exists without a durable name-tree-root binding",
+            "schema marker exists without a durable airdrop-field binding",
             "database contains data but has no schema marker",
             "invalid clean-shutdown marker",
             "NameTreeRoot",
+            "AirdropField",
             "SyncCheckpoint",
             "sync-checkpoint",
         ),

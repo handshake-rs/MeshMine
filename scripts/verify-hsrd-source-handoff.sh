@@ -19,6 +19,8 @@ node scripts/verify-operator-receipt-fixture.js
 node hsd-oracle/audit-dependencies.js --allow-unavailable
 npm run hsrd-script-fixtures --prefix hsd-oracle
 npm run hsrd-deployment-fixtures --prefix hsd-oracle
+npm run hsrd-airdrop-fixtures --prefix hsd-oracle
+npm run hsrd-claim-fixtures --prefix hsd-oracle
 npm run hsrd-covenant-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-codec-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-urkel-fixtures --prefix hsd-oracle
@@ -34,6 +36,8 @@ scripts/verify-hsrd-secp256k1.sh
 for source in \
   hsd-oracle/generate-hsrd-script-fixtures.js \
   hsd-oracle/generate-hsrd-deployment-fixtures.js \
+  hsd-oracle/generate-hsrd-airdrop-fixtures.js \
+  hsd-oracle/generate-hsrd-claim-fixtures.js \
   hsd-oracle/generate-hsrd-covenant-fixtures.js \
   hsd-oracle/generate-hsrd-name-state-codec-fixtures.js \
   hsd-oracle/generate-hsrd-name-state-urkel-fixtures.js \

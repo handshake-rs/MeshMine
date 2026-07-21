@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HSD_REVISION = "698e252ebc7b5c1dd0a9587e342fdd153d020ae4"
 HSD_REPOSITORY = "handshake-org/hsd"
 MANIFEST_PATH = ROOT / "hsrd/fixtures/hsd/manifest-v1.json"
-EXPECTED_STORE_SCHEMA = 12
-EXPECTED_STORAGE_PROFILE = "hsrd-mining-v8"
+EXPECTED_STORE_SCHEMA = 13
+EXPECTED_STORAGE_PROFILE = "hsrd-mining-v9"
 SKIP_PARTS = {".git", "node_modules", "target", "__pycache__"}
 
 
@@ -611,6 +611,7 @@ def validate_consensus_boundaries() -> None:
             "pub fn prove_hsd_from_records",
             "pub fn validate_record_root",
             "pub fn validate_record_tree",
+            "pub fn reachable_record_roots",
             "pub struct UnavailableNameTree",
             "pub struct NativeUrkelVerifier",
             "exact_roots_match_the_pinned_hsd_urkel_fixture",
@@ -625,13 +626,32 @@ def validate_consensus_boundaries() -> None:
         state_source,
         (
             "pub struct MaterializedNameTreeSnapshot",
+            "pub struct NameTreeSnapshotPin",
+            "pub struct NameTreeCompactionSummary",
             "pub fn materialize_name_tree_snapshot",
+            "pub fn load_name_tree_snapshot_pins",
+            "pub fn stage_name_tree_node_compaction",
+            "pub fn compact_name_tree_nodes",
+            "NAME_TREE_SNAPSHOT_PIN_PREFIX",
             "materialized_name_tree_proofs_are_snapshot_and_restart_stable",
             "persisted_name_tree_proofs_survive_restart_and_reject_node_faults",
             "staged_name_tree_mutation_is_path_local_and_matches_rebuild_oracle",
             "multi_step_overlay_reads_incremental_nodes_and_retains_historical_roots",
+            "interval_pins_and_compaction_preserve_only_retained_proof_roots",
+            "malformed_snapshot_pin_aborts_compaction_without_deleting_nodes",
+            "failed_compaction_commit_preserves_all_nodes",
         ),
         "durable name-tree proofs",
+    )
+
+    require_tokens(
+        node_source,
+        (
+            "load_name_tree_snapshot_pins",
+            "active interval height",
+            "startup_rejects_missing_or_corrupt_name_tree_snapshot_pin",
+        ),
+        "durable name-tree snapshot startup",
     )
 
 

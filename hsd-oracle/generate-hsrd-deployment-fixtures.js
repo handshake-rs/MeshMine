@@ -235,6 +235,8 @@ function networkJson(name) {
     goosigStop: network.goosigStop,
     deflationHeight: network.deflationHeight,
     claimPrefix: network.claimPrefix,
+    pruneAfterHeight: network.block.pruneAfterHeight,
+    keepBlocks: network.block.keepBlocks,
     lastCheckpoint: network.lastCheckpoint,
     checkpoints: network.checkpoints.map(checkpoint => ({
       height: checkpoint.height,

@@ -26,6 +26,7 @@ npm run hsrd-mainnet-claim-history --prefix hsd-oracle
 npm run hsrd-mainnet-claim-replacements --prefix hsd-oracle
 npm run hsrd-covenant-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-codec-fixtures --prefix hsd-oracle
+npm run hsrd-name-transition-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-urkel-fixtures --prefix hsd-oracle
 npm run hsrd-name-policy-fixtures --prefix hsd-oracle
 npm run hsrd-p2p-wire-fixtures --prefix hsd-oracle
@@ -47,6 +48,7 @@ for source in \
   hsd-oracle/export-hsrd-mainnet-claim-replacements.js \
   hsd-oracle/generate-hsrd-covenant-fixtures.js \
   hsd-oracle/generate-hsrd-name-state-codec-fixtures.js \
+  hsd-oracle/generate-hsrd-name-transition-fixtures.js \
   hsd-oracle/generate-hsrd-name-state-urkel-fixtures.js \
   hsd-oracle/generate-hsrd-name-policy-fixtures.js \
   hsd-oracle/generate-hsrd-p2p-wire-fixtures.js \

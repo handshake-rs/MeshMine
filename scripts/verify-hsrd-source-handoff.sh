@@ -22,6 +22,7 @@ npm run hsrd-deployment-fixtures --prefix hsd-oracle
 npm run hsrd-mainnet-deployment-history --prefix hsd-oracle
 npm run hsrd-airdrop-fixtures --prefix hsd-oracle
 npm run hsrd-claim-fixtures --prefix hsd-oracle
+npm run hsrd-mainnet-claim-history --prefix hsd-oracle
 npm run hsrd-covenant-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-codec-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-urkel-fixtures --prefix hsd-oracle
@@ -41,6 +42,7 @@ for source in \
   hsd-oracle/export-hsrd-mainnet-deployment-history.js \
   hsd-oracle/generate-hsrd-airdrop-fixtures.js \
   hsd-oracle/generate-hsrd-claim-fixtures.js \
+  hsd-oracle/export-hsrd-mainnet-claim-history.js \
   hsd-oracle/generate-hsrd-covenant-fixtures.js \
   hsd-oracle/generate-hsrd-name-state-codec-fixtures.js \
   hsd-oracle/generate-hsrd-name-state-urkel-fixtures.js \

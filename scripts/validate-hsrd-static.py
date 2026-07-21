@@ -203,6 +203,7 @@ def validate_fixture_manifest() -> None:
         "name-policy-v1",
         "p2p-wire-v1",
         "mining-template-v1",
+        "mainnet-claim-history-v1",
     }
     missing = sorted(required - seen_ids)
     if missing:
@@ -381,6 +382,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-script-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-airdrop-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-claim-fixtures.js",
+        ROOT / "hsd-oracle/export-hsrd-mainnet-claim-history.js",
         ROOT / "hsd-oracle/export-hsrd-mainnet-deployment-history.js",
         ROOT / "hsd-oracle/generate-hsrd-covenant-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-name-state-codec-fixtures.js",
@@ -391,6 +393,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsrd/fixtures/hsd/scripts/sighash-v1.json",
         ROOT / "hsrd/fixtures/hsd/airdrops/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/claims/codec-v1.json",
+        ROOT / "hsrd/fixtures/hsd/claims/mainnet-history-v1.json",
         ROOT / "hsrd/fixtures/hsd/chains/mainnet-deployment-history-v1.json",
         ROOT / "hsrd/fixtures/hsd/covenants/linkage-v1.json",
         ROOT / "hsrd/fixtures/hsd/name-states/codec-v1.json",
@@ -408,6 +411,7 @@ def validate_oracle_revision() -> None:
         "hsrd-script-fixtures",
         "hsrd-airdrop-fixtures",
         "hsrd-claim-fixtures",
+        "hsrd-mainnet-claim-history",
         "hsrd-mainnet-deployment-history",
         "hsrd-covenant-fixtures",
         "hsrd-name-state-codec-fixtures",
@@ -452,7 +456,13 @@ def validate_consensus_boundaries() -> None:
     gost_source = read_text(ROOT / "hsrd/crates/hns-consensus/src/gost94.rs")
     require_tokens(
         claim_source,
-        ("digest_type == 3", "crate::gost94::digest", "ALG_ED448"),
+        (
+            "digest_type == 3",
+            "crate::gost94::digest",
+            "ALG_ED448",
+            "proof.verify_time(parent_time)",
+            "parent block time",
+        ),
         "DNSSEC claim cryptography",
     )
     require_tokens(
@@ -491,6 +501,7 @@ def validate_consensus_boundaries() -> None:
             "RejectSpecialCoinbaseIssuance",
             "AirdropCoinbaseIssuanceVerifier",
             "NativeAirdropSignatureVerifier::new()",
+            "chain_context.block_time(request.height - 1)?",
         ),
         "state transition",
     )

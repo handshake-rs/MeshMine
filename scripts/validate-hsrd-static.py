@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HSD_REVISION = "698e252ebc7b5c1dd0a9587e342fdd153d020ae4"
 HSD_REPOSITORY = "handshake-org/hsd"
 MANIFEST_PATH = ROOT / "hsrd/fixtures/hsd/manifest-v1.json"
-EXPECTED_STORE_SCHEMA = 11
-EXPECTED_STORAGE_PROFILE = "hsrd-mining-v7"
+EXPECTED_STORE_SCHEMA = 12
+EXPECTED_STORAGE_PROFILE = "hsrd-mining-v8"
 SKIP_PARTS = {".git", "node_modules", "target", "__pycache__"}
 
 
@@ -313,6 +313,7 @@ def validate_schema_coordination() -> None:
             "database contains data but has no schema marker",
             "invalid clean-shutdown marker",
             "NameTreeRoot",
+            "NameTreeNodes",
             "AirdropField",
             "SyncCheckpoint",
             "sync-checkpoint",
@@ -506,6 +507,9 @@ def validate_consensus_boundaries() -> None:
             "rebuild_name_tree_root",
             "rebuild_name_tree_root_with_overrides",
             "verify_stored_name_tree_root",
+            "stage_name_tree_with_overrides",
+            "prove_persisted_name_tree",
+            "validate_persisted_name_tree",
             "MetaKey::NameTreeRoot",
             "HeaderTreeRootMismatch",
             "previous_tree_root",
@@ -555,6 +559,7 @@ def validate_consensus_boundaries() -> None:
         node_source,
         (
             "verify_stored_name_tree_root(&snapshot)",
+            "validate_persisted_name_tree(&snapshot, durable_name_tree_root)",
             "status.tree_root_valid = state_summary.validation.tree_root_valid",
             "block.header.tree_root != *undo.previous_tree_root.as_bytes()",
         ),
@@ -592,6 +597,9 @@ def validate_consensus_boundaries() -> None:
         (
             "pub struct MemoryUrkel",
             "pub fn root_from_entries",
+            "pub enum UrkelNodeRecord",
+            "pub fn prove_hsd_from_records",
+            "pub fn validate_record_tree",
             "pub struct UnavailableNameTree",
             "pub struct NativeUrkelVerifier",
             "exact_roots_match_the_pinned_hsd_urkel_fixture",
@@ -606,8 +614,9 @@ def validate_consensus_boundaries() -> None:
             "pub struct MaterializedNameTreeSnapshot",
             "pub fn materialize_name_tree_snapshot",
             "materialized_name_tree_proofs_are_snapshot_and_restart_stable",
+            "persisted_name_tree_proofs_survive_restart_and_reject_node_faults",
         ),
-        "durable materialized name-tree proofs",
+        "durable name-tree proofs",
     )
 
 

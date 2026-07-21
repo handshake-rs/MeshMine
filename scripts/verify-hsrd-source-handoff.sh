@@ -33,6 +33,7 @@ npm run validate-body --prefix hsd-oracle
 npm run payout --prefix hsd-oracle
 
 scripts/verify-hsrd-secp256k1.sh
+scripts/verify-hsrd-goosig-source.sh
 
 for source in \
   hsd-oracle/generate-hsrd-script-fixtures.js \

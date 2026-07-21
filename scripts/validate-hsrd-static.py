@@ -379,6 +379,7 @@ def validate_oracle_revision() -> None:
 
     exact_revision_files = [
         ROOT / "hsd-oracle/generate-hsrd-script-fixtures.js",
+        ROOT / "hsd-oracle/generate-hsrd-airdrop-fixtures.js",
         ROOT / "hsd-oracle/export-hsrd-mainnet-deployment-history.js",
         ROOT / "hsd-oracle/generate-hsrd-covenant-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-name-state-codec-fixtures.js",
@@ -387,6 +388,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-p2p-wire-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-mining-template-fixtures.js",
         ROOT / "hsrd/fixtures/hsd/scripts/sighash-v1.json",
+        ROOT / "hsrd/fixtures/hsd/airdrops/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/chains/mainnet-deployment-history-v1.json",
         ROOT / "hsrd/fixtures/hsd/covenants/linkage-v1.json",
         ROOT / "hsrd/fixtures/hsd/name-states/codec-v1.json",
@@ -402,6 +404,7 @@ def validate_oracle_revision() -> None:
     package_scripts = package.get("scripts", {})
     check_scripts = (
         "hsrd-script-fixtures",
+        "hsrd-airdrop-fixtures",
         "hsrd-mainnet-deployment-history",
         "hsrd-covenant-fixtures",
         "hsrd-name-state-codec-fixtures",
@@ -423,6 +426,7 @@ def validate_consensus_boundaries() -> None:
         (
             "verify_transaction_covenant_links",
             "TransactionInputVerifier",
+            "NativeAirdropSignatureVerifier",
             "RejectUnverifiedInputs",
             "NativeSignatureVerifier",
             "is_consensus_complete",
@@ -469,9 +473,35 @@ def validate_consensus_boundaries() -> None:
             "previous_tree_root",
             "resulting_tree_root",
             "RejectSpecialCoinbaseIssuance",
+            "AirdropCoinbaseIssuanceVerifier",
+            "NativeAirdropSignatureVerifier::new()",
         ),
         "state transition",
     )
+
+    node_source = read_text(ROOT / "hsrd/crates/hns-node/src/lib.rs")
+    require_tokens(
+        node_source,
+        ("AirdropCoinbaseIssuanceVerifier::native(deployments)",),
+        "active-node airdrop verification",
+    )
+
+    goosig_source = read_text(ROOT / "hsrd/crates/hns-goosig/src/lib.rs")
+    require_tokens(
+        goosig_source,
+        ("GOO_RSA2048", "goo_create", "goo_verify", "thread_local!"),
+        "Goosig verification wrapper",
+    )
+    for relative in (
+        "LICENSE",
+        "src/goo/goo.c",
+        "src/goo/goo.h",
+        "src/goo/mini-gmp.c",
+        "src/goo/mini-gmp.h",
+        "src/goo/primes.h",
+    ):
+        if not (ROOT / "hsrd/vendor/goosig" / relative).is_file():
+            fail(f"vendored Goosig source is missing {relative}")
 
     connect_root_check = state_source.find("let inherited_tree_root = verify_stored_name_tree_root")
     transition_start = state_source.find("for (transaction_index, transaction)")

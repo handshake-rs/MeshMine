@@ -1,8 +1,8 @@
 'use strict';
 
 // Generates deterministic HSD airdrop key/proof codec vectors. The committed
-// faucet proof is copied from the pinned HSD upstream test corpus and exercises
-// a complete address-key proof, including its production Merkle root.
+// faucet and GooSig proofs are copied from the pinned HSD upstream test corpus
+// and exercise complete address-key and production-root allocation paths.
 
 process.env.NODE_BACKEND = process.env.NODE_BACKEND || 'js';
 
@@ -12,12 +12,28 @@ const path = require('path');
 
 const AirdropKey = require('hsd/lib/primitives/airdropkey');
 const AirdropProof = require('hsd/lib/primitives/airdropproof');
+const SHA256 = require('bcrypto/lib/sha256');
+const ed25519 = require('bcrypto/lib/ed25519');
+const p256 = require('bcrypto/lib/p256');
+const rsa = require('bcrypto/lib/rsa');
 
 const REVISION = '698e252ebc7b5c1dd0a9587e342fdd153d020ae4';
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT = path.join(ROOT, 'hsrd/fixtures/hsd/airdrops/codec-v1.json');
+const AIRDROP_PROOF_SOURCE = path.join(__dirname, 'fixtures/airdrop-proof.base64');
 const FAUCET_PROOF_BASE64 =
   'MAEAAAsk88I7Sy9q89bcBYyQgm1M22vxwC7++XJxyVdqpVvJ8oH32lPurCMb4gg+GRREgJ26Bd23tf1+pDvj8JpGugxrfzWtzF3cRzdXfR64/rndCh1ABd/yjvgKYEOB/yxgN/TTzYcaHLlI/CR33j3OmHfS+e0ktRSb4Yv+fdmBrzJ4XjzbnZcrYBfyhc4QgqN8wM3fuvkNOuviuZsAJYkc3hdngxVZFQX0qQg87SuVDFbUT2GicLlmSwxE3b4Wk2EKthfNrdSa/8r2d0qbA7dyYtSd5Q+IrBLly4N8E2UTweIc8I5xBB7ssWEDGb3VQfroHulv+D0OIINjky32tDnbKYesCsOXdfD+5vDp8dg288NsZacFIpmy6El/ri58E31liXkU2qyvcyA+V+E4wqkPE4CShHqBaAzAbSxddiHnFvAfAFsKPkkdrkOQBJuxX0ZlXjHj2jJTspzwEE9Z0MYwuu2HAAAgBAAU3IMpICLzdoj4PQF5aBqkkHXqaK8U+0f6AQAAAAAAFNyDKSAi83aI+D0BeWgapJB16miv/gDh9QUA';
+const RSA_P = Buffer.from(
+  'fe64e81e43bc61d57cf2ff3b0f424b54e9eb52ec0a1d8441777b83ca0d8d79a7'
+  + 'fdeff97be4c67b88bae8ae01747ba4d0a2e8146be045ceec56cb1bd91a8293ef',
+  'hex'
+);
+const RSA_Q = Buffer.from(
+  'e9b8e19b8bef9e8b56b42803d36bc75ea020e09e9ee143aa90ff0f0c6a8329603'
+  + 'bf241e6a3914606d01f5d77554b5e83978369764ed97a6b257e9c3423512fed',
+  'hex'
+);
+const RSA_E = Buffer.from('010001', 'hex');
 
 function repeated(size, byte) {
   return Buffer.alloc(size, byte);
@@ -122,6 +138,82 @@ function proofVector(id, proof) {
   };
 }
 
+function signatureVector(type, key, message, signature) {
+  assert(key.validate(), `${type} fixture key must validate`);
+  assert(key.verify(message, signature), `${type} fixture signature must verify`);
+  const alteredMessage = Buffer.from(message);
+  alteredMessage[0] ^= 1;
+  const alteredSignature = Buffer.from(signature);
+  alteredSignature[0] ^= 1;
+  assert(!key.verify(alteredMessage, signature),
+    `${type} signature must reject an altered message`);
+  assert(!key.verify(message, alteredSignature),
+    `${type} signature must reject an altered signature`);
+  return {
+    type,
+    keyRaw: key.encode().toString('hex'),
+    message: message.toString('hex'),
+    signature: signature.toString('hex'),
+    valid: true,
+    alteredMessageValid: false,
+    alteredSignatureValid: false
+  };
+}
+
+function makeSignatureCases(airdrop) {
+  const message = Buffer.alloc(32, 0x5a);
+  const cases = [];
+
+  const rsaPrivate = rsa.privateKeyImport({p: RSA_P, q: RSA_Q, e: RSA_E});
+  const rsaPublic = rsa.publicKeyExport(rsa.publicKeyCreate(rsaPrivate));
+  const rsaKey = new AirdropKey();
+  rsaKey.type = AirdropKey.keyTypes.RSA;
+  rsaKey.n = rsaPublic.n;
+  rsaKey.e = rsaPublic.e;
+  rsaKey.nonce = repeated(32, 0x11);
+  cases.push(signatureVector(
+    'RSA',
+    rsaKey,
+    message,
+    rsa.sign(SHA256, message, rsaPrivate)
+  ));
+
+  const p256Private = Buffer.alloc(32, 0);
+  p256Private[31] = 1;
+  const p256Key = new AirdropKey();
+  p256Key.type = AirdropKey.keyTypes.P256;
+  p256Key.point = p256.publicKeyCreate(p256Private, true);
+  p256Key.nonce = repeated(32, 0x22);
+  cases.push(signatureVector(
+    'P256',
+    p256Key,
+    message,
+    p256.sign(message, p256Private)
+  ));
+
+  const edPrivate = repeated(32, 0x33);
+  const edKey = new AirdropKey();
+  edKey.type = AirdropKey.keyTypes.ED25519;
+  edKey.point = ed25519.publicKeyCreate(edPrivate);
+  edKey.nonce = repeated(32, 0x44);
+  cases.push(signatureVector(
+    'ED25519',
+    edKey,
+    message,
+    ed25519.sign(message, edPrivate)
+  ));
+
+  const gooKey = airdrop.getKey();
+  assert(gooKey && gooKey.isGoo(), 'upstream airdrop proof must use GooSig');
+  cases.push(signatureVector(
+    'GOO',
+    gooKey,
+    airdrop.signatureHash(),
+    airdrop.signature
+  ));
+  return cases;
+}
+
 function decodeMutation(id, raw) {
   let accepted = true;
   try {
@@ -134,8 +226,11 @@ function decodeMutation(id, raw) {
 
 function makeFixture() {
   const keys = makeKeys();
+  const airdropRaw = Buffer.from(fs.readFileSync(AIRDROP_PROOF_SOURCE, 'ascii'), 'base64');
+  const airdrop = AirdropProof.decode(airdropRaw);
   const faucetRaw = Buffer.from(FAUCET_PROOF_BASE64, 'base64');
   const faucet = AirdropProof.decode(faucetRaw);
+  assert(airdrop.verify(), 'pinned HSD GooSig airdrop proof must verify');
   assert(faucet.verify(), 'pinned HSD faucet proof must verify');
 
   const invalidIndex = Buffer.from(faucetRaw);
@@ -163,6 +258,8 @@ function makeFixture() {
     },
     keys: keys.map(keyVector),
     proofs: keys.map((key, index) => proofVector(`synthetic-${index}`, syntheticProof(key, index))),
+    signatureCases: makeSignatureCases(airdrop),
+    airdrop: proofVector('upstream-valid-goosig-airdrop', airdrop),
     faucet: proofVector('upstream-valid-faucet', faucet),
     decodeMutations: [
       decodeMutation('trailing-byte', Buffer.concat([faucetRaw, Buffer.from([0])])),

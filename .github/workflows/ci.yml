@@ -96,6 +96,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential clang libclang-dev
       - name: Smoke-test the pinned vendored libsecp256k1 revision
         run: scripts/verify-hsrd-secp256k1.sh
+      - name: Verify the pinned vendored Goosig source
+        run: scripts/verify-hsrd-goosig-source.sh
       - name: Install declared Rust toolchain
         run: rustup toolchain install 1.89.0 --profile minimal --component rustfmt,clippy
       - name: Select declared Rust toolchain

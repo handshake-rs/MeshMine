@@ -17,6 +17,7 @@ installMemoryOnlyDatabaseShim(hsdRoot);
 
 const Chain = require('hsd/lib/blockchain/chain');
 const ChainEntry = require('hsd/lib/blockchain/chainentry');
+const Block = require('hsd/lib/primitives/block');
 const Network = require('hsd/lib/protocol/network');
 
 const REVISION = '698e252ebc7b5c1dd0a9587e342fdd153d020ae4';
@@ -26,6 +27,7 @@ const OUTPUT = path.join(
   'hsrd/fixtures/hsd/chains/mainnet-deployment-history-v1.json'
 );
 const THROUGH_HEIGHT = 338688;
+const FINALITY_HEIGHT = 1;
 const STATE_NAMES = Object.freeze([
   'DEFINED',
   'STARTED',
@@ -300,8 +302,33 @@ async function fetchFixture(prefix) {
     }
 
     const anchor = historicalBoundaries.at(-1);
+    const finalityHeader = await client.getBlockHeader(FINALITY_HEIGHT);
+    const finalityParent = await client.getBlockHeader(FINALITY_HEIGHT - 1);
+    assert(finalityHeader && finalityHeader.height === FINALITY_HEIGHT,
+      'HSD omitted historical finality header');
+    assert(finalityParent && finalityParent.height === FINALITY_HEIGHT - 1,
+      'HSD omitted historical finality parent');
+    const finalityRaw = await client.execute(
+      'getblock',
+      [finalityHeader.hash, false]
+    );
+    assert(typeof finalityRaw === 'string',
+      'HSD omitted historical finality block bytes');
+    const finalityBlock = Block.decode(Buffer.from(finalityRaw, 'hex'));
+    // The parent is genesis, so its timestamp is also its one-entry MTP.
+    const parentMedianTimePast = finalityParent.time;
+    const transactionFinality = finalityBlock.txs.map(tx =>
+      tx.isFinal(FINALITY_HEIGHT, parentMedianTimePast));
+    const checkedTransactionIndexes = finalityBlock.txs
+      .map((_tx, index) => index)
+      .slice(1);
+    assert(transactionFinality.some(final => !final),
+      'historical finality case must expose a non-final coinbase');
+    assert(checkedTransactionIndexes.every(index => transactionFinality[index]),
+      'historical finality case contains a non-final ordinary transaction');
+
     return {
-      schema: 2,
+      schema: 3,
       oracle: {
         repository: 'handshake-org/hsd',
         revision: REVISION,
@@ -315,6 +342,16 @@ async function fetchFixture(prefix) {
       anchorHash: anchor.hash,
       deployments: network.deploys.map(deploymentJson),
       historicalBoundaries,
+      historicalFinalityCases: [{
+        id: 'mainnet-block-1-coinbase-finality-exemption',
+        height: FINALITY_HEIGHT,
+        hash: finalityHeader.hash,
+        parentMedianTimePast,
+        raw: finalityRaw,
+        transactionFinality,
+        checkedTransactionIndexes,
+        accepted: true
+      }],
       periods
     };
   } finally {
@@ -345,7 +382,7 @@ function syntheticPeriod(period, deployments, window) {
 }
 
 async function validateFixture(fixture) {
-  assert.strictEqual(fixture.schema, 2);
+  assert.strictEqual(fixture.schema, 3);
   assert.deepStrictEqual(fixture.oracle, {
     repository: 'handshake-org/hsd',
     revision: REVISION,
@@ -438,6 +475,37 @@ async function validateFixture(fixture) {
   const anchor = fixture.historicalBoundaries.at(-1);
   assert.strictEqual(anchor.height, THROUGH_HEIGHT);
   assert.strictEqual(anchor.hash, fixture.anchorHash);
+
+  assert.strictEqual(fixture.historicalFinalityCases.length, 1);
+  for (const item of fixture.historicalFinalityCases) {
+    assert.strictEqual(item.id,
+      'mainnet-block-1-coinbase-finality-exemption');
+    assert.strictEqual(item.height, FINALITY_HEIGHT);
+    assert(/^[0-9a-f]{64}$/.test(item.hash),
+      `${item.id} has an invalid block hash`);
+    assert(Number.isSafeInteger(item.parentMedianTimePast),
+      `${item.id} has an invalid parent median time`);
+    assert(typeof item.raw === 'string' && /^[0-9a-f]+$/.test(item.raw),
+      `${item.id} has invalid block bytes`);
+    const block = Block.decode(Buffer.from(item.raw, 'hex'));
+    assert.strictEqual(block.hash().toString('hex'), item.hash);
+    assert.strictEqual(block.encode().toString('hex'), item.raw);
+    const transactionFinality = block.txs.map(tx =>
+      tx.isFinal(item.height, item.parentMedianTimePast));
+    assert.deepStrictEqual(transactionFinality, item.transactionFinality);
+    assert.deepStrictEqual(
+      block.txs.map((_tx, index) => index).slice(1),
+      item.checkedTransactionIndexes
+    );
+    assert.strictEqual(transactionFinality[0], false,
+      `${item.id} must retain its non-final coinbase evidence`);
+    assert.strictEqual(
+      item.checkedTransactionIndexes.every(index => transactionFinality[index]),
+      item.accepted,
+      `${item.id} HSD block-finality route mismatch`
+    );
+    assert.strictEqual(item.accepted, true);
+  }
 }
 
 function stable(value) {

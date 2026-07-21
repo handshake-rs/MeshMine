@@ -496,6 +496,7 @@ def validate_consensus_boundaries() -> None:
             "RejectUnverifiedInputs",
             "NativeSignatureVerifier",
             "is_consensus_complete",
+            "block_finality_does_not_apply_to_the_coinbase",
         ),
         "consensus boundary",
     )
@@ -521,6 +522,7 @@ def validate_consensus_boundaries() -> None:
             "HistoricalValidationPlan::hsd_checkpointed()",
             "compute_block_version_from_state",
             "historical_validation_plan_matches_hsd_routes_and_fails_closed",
+            "mainnet-block-1-coinbase-finality-exemption",
         ),
         "historical deployment validation",
     )

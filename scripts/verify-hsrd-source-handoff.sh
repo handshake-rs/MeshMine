@@ -28,6 +28,7 @@ npm run hsrd-covenant-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-codec-fixtures --prefix hsd-oracle
 npm run hsrd-name-transition-fixtures --prefix hsd-oracle
 npm run hsrd-name-state-urkel-fixtures --prefix hsd-oracle
+npm run hsrd-urkel-proof-fixtures --prefix hsd-oracle
 npm run hsrd-name-policy-fixtures --prefix hsd-oracle
 npm run hsrd-p2p-wire-fixtures --prefix hsd-oracle
 npm run hsrd-mining-template-fixtures --prefix hsd-oracle
@@ -50,6 +51,7 @@ for source in \
   hsd-oracle/generate-hsrd-name-state-codec-fixtures.js \
   hsd-oracle/generate-hsrd-name-transition-fixtures.js \
   hsd-oracle/generate-hsrd-name-state-urkel-fixtures.js \
+  hsd-oracle/generate-hsrd-urkel-proof-fixtures.js \
   hsd-oracle/generate-hsrd-name-policy-fixtures.js \
   hsd-oracle/generate-hsrd-p2p-wire-fixtures.js \
   hsd-oracle/generate-hsrd-mining-template-fixtures.js \

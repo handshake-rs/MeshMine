@@ -37,6 +37,8 @@
     "generate-hsrd-name-transition-fixtures": "node generate-hsrd-name-transition-fixtures.js --write --check",
     "hsrd-name-state-urkel-fixtures": "node generate-hsrd-name-state-urkel-fixtures.js --check",
     "generate-hsrd-name-state-urkel-fixtures": "node generate-hsrd-name-state-urkel-fixtures.js --write --check",
+    "hsrd-urkel-proof-fixtures": "node generate-hsrd-urkel-proof-fixtures.js --check",
+    "generate-hsrd-urkel-proof-fixtures": "node generate-hsrd-urkel-proof-fixtures.js --write --check",
     "hsrd-name-policy-fixtures": "node generate-hsrd-name-policy-fixtures.js --check",
     "generate-hsrd-name-policy-fixtures": "node generate-hsrd-name-policy-fixtures.js --write --check",
     "hsrd-p2p-wire-fixtures": "node generate-hsrd-p2p-wire-fixtures.js --check",

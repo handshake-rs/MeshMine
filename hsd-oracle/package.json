@@ -19,6 +19,8 @@
     "generate-hsrd-script-fixtures": "node generate-hsrd-script-fixtures.js --write --check",
     "hsrd-deployment-fixtures": "node generate-hsrd-deployment-fixtures.js --check",
     "generate-hsrd-deployment-fixtures": "node generate-hsrd-deployment-fixtures.js --write --check",
+    "hsrd-mainnet-deployment-history": "node export-hsrd-mainnet-deployment-history.js --check",
+    "refresh-hsrd-mainnet-deployment-history": "node export-hsrd-mainnet-deployment-history.js --refresh --write --check",
     "hsrd-airdrop-fixtures": "node generate-hsrd-airdrop-fixtures.js --check",
     "generate-hsrd-airdrop-fixtures": "node generate-hsrd-airdrop-fixtures.js --write --check",
     "hsrd-claim-fixtures": "node generate-hsrd-claim-fixtures.js --check",

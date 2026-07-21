@@ -379,6 +379,7 @@ def validate_oracle_revision() -> None:
 
     exact_revision_files = [
         ROOT / "hsd-oracle/generate-hsrd-script-fixtures.js",
+        ROOT / "hsd-oracle/export-hsrd-mainnet-deployment-history.js",
         ROOT / "hsd-oracle/generate-hsrd-covenant-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-name-state-codec-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-name-state-urkel-fixtures.js",
@@ -386,6 +387,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-p2p-wire-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-mining-template-fixtures.js",
         ROOT / "hsrd/fixtures/hsd/scripts/sighash-v1.json",
+        ROOT / "hsrd/fixtures/hsd/chains/mainnet-deployment-history-v1.json",
         ROOT / "hsrd/fixtures/hsd/covenants/linkage-v1.json",
         ROOT / "hsrd/fixtures/hsd/name-states/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/name-states/state-urkel-v1.json",
@@ -400,6 +402,7 @@ def validate_oracle_revision() -> None:
     package_scripts = package.get("scripts", {})
     check_scripts = (
         "hsrd-script-fixtures",
+        "hsrd-mainnet-deployment-history",
         "hsrd-covenant-fixtures",
         "hsrd-name-state-codec-fixtures",
         "hsrd-name-state-urkel-fixtures",

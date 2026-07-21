@@ -74,6 +74,8 @@ jobs:
         run: bash -n scripts/verify-hsrd-source-handoff.sh
       - name: Reproduce HSD script fixtures
         run: npm run hsrd-script-fixtures --prefix hsd-oracle
+      - name: Reproduce HSD deployment fixtures
+        run: npm run hsrd-deployment-fixtures --prefix hsd-oracle
       - name: Reproduce HSD covenant fixtures
         run: npm run hsrd-covenant-fixtures --prefix hsd-oracle
       - name: Reproduce HSD NameState codec fixtures

@@ -17,6 +17,8 @@
     "vectors": "node generate-vectors.js --count 10000",
     "hsrd-script-fixtures": "node generate-hsrd-script-fixtures.js --check",
     "generate-hsrd-script-fixtures": "node generate-hsrd-script-fixtures.js --write --check",
+    "hsrd-deployment-fixtures": "node generate-hsrd-deployment-fixtures.js --check",
+    "generate-hsrd-deployment-fixtures": "node generate-hsrd-deployment-fixtures.js --write --check",
     "hsrd-covenant-fixtures": "node generate-hsrd-covenant-fixtures.js --check",
     "generate-hsrd-covenant-fixtures": "node generate-hsrd-covenant-fixtures.js --write --check",
     "hsrd-name-state-codec-fixtures": "node generate-hsrd-name-state-codec-fixtures.js --check",

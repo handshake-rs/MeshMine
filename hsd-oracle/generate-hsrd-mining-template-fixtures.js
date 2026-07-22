@@ -172,25 +172,47 @@ function mempoolDynamicPolicy() {
     require.resolve('hsd/lib/mempool/mempool'),
     'utf8'
   );
+  const entrySource = fs.readFileSync(
+    require.resolve('hsd/lib/mempool/mempoolentry'),
+    'utf8'
+  );
   assert.match(source, /const threshold = maxSize - \(maxSize \/ 10\);/);
   assert.match(source, /if \(this\.hasDepends\(entry\.tx\)\)\s+continue;/);
   assert.match(source, /now >= entry\.time \+ expiryTime/);
   assert.match(source, /if \(useDesc\(a\)\) \{\s+xf = a\.descFee;/);
   assert.match(source, /if \(x === y\) \{\s+x = a\.time;\s+y = b\.time;/);
+  assert.match(source, /this\.limitFree = true;/);
+  assert.match(source, /this\.limitFreeRelay = 15;/);
+  assert.match(source, /this\.relayPriority = true;/);
+  assert.match(source, /Math\.pow\(1 - 1 \/ 600, now - this\.lastTime\)/);
+  assert.match(
+    source,
+    /this\.freeCount > this\.options\.limitFreeRelay \* 10 \* 1000/
+  );
+  assert.match(entrySource, /return priority > policy\.FREE_THRESHOLD;/);
   return {
     maximumSize: policy.MEMPOOL_MAX_SIZE,
     expiryTime: policy.MEMPOOL_EXPIRY_TIME,
     trimTarget: {numerator: 9, denominator: 10},
     dependencyRootsOnly: true,
     descendantPackageRate: true,
-    equalRateOldestFirst: true
+    equalRateOldestFirst: true,
+    freeThreshold: policy.FREE_THRESHOLD,
+    relayPriority: true,
+    limitFree: true,
+    limitFreeRelay: 15,
+    freeDecay: {numerator: 599, denominator: 600},
+    freeDecaySeconds: 600,
+    freeRelayMultiplier: 10000,
+    strictFreeThreshold: true,
+    strictRateLimitThreshold: true
   };
 }
 
 function buildFixture() {
   const coinbase = deterministicCoinbase();
   return {
-    schema: 4,
+    schema: 5,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION

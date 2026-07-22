@@ -422,6 +422,7 @@ def validate_oracle_revision() -> None:
 
     exact_revision_files = [
         ROOT / "hsd-oracle/generate-hsrd-script-fixtures.js",
+        ROOT / "hsd-oracle/generate-hsrd-genesis-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-airdrop-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-claim-fixtures.js",
         ROOT / "hsd-oracle/export-hsrd-mainnet-claim-history.js",
@@ -436,6 +437,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-p2p-wire-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-mining-template-fixtures.js",
         ROOT / "hsrd/fixtures/hsd/scripts/sighash-v1.json",
+        ROOT / "hsrd/fixtures/hsd/blocks/genesis-v1.json",
         ROOT / "hsrd/fixtures/hsd/airdrops/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/claims/codec-v1.json",
         ROOT / "hsrd/fixtures/hsd/claims/mainnet-history-v1.json",
@@ -470,6 +472,7 @@ def validate_oracle_revision() -> None:
     package_scripts = package.get("scripts", {})
     check_scripts = (
         "hsrd-script-fixtures",
+        "hsrd-genesis-fixtures",
         "hsrd-airdrop-fixtures",
         "hsrd-claim-fixtures",
         "hsrd-mainnet-claim-history",

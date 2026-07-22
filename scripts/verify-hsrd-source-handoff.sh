@@ -20,6 +20,7 @@ node scripts/verify-operator-receipt-fixture.js
 node hsd-oracle/audit-dependencies.js --allow-unavailable
 npm run hsrd-script-fixtures --prefix hsd-oracle
 npm run hsrd-deployment-fixtures --prefix hsd-oracle
+npm run hsrd-genesis-fixtures --prefix hsd-oracle
 npm run hsrd-mainnet-deployment-history --prefix hsd-oracle
 npm run hsrd-airdrop-fixtures --prefix hsd-oracle
 npm run hsrd-claim-fixtures --prefix hsd-oracle
@@ -43,6 +44,7 @@ scripts/verify-hsrd-goosig-source.sh
 for source in \
   hsd-oracle/generate-hsrd-script-fixtures.js \
   hsd-oracle/generate-hsrd-deployment-fixtures.js \
+  hsd-oracle/generate-hsrd-genesis-fixtures.js \
   hsd-oracle/export-hsrd-mainnet-deployment-history.js \
   hsd-oracle/generate-hsrd-airdrop-fixtures.js \
   hsd-oracle/generate-hsrd-claim-fixtures.js \

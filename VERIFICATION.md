@@ -10,10 +10,10 @@ Environment: `aarch64`, Rust/Cargo 1.89.0, Node.js 24.13.0, and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 333 all-feature tests, 327 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-21) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 334 all-feature tests, 328 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
-| Pinned HSD oracle | Seven fixture generators, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
+| Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
 | Native cryptography | Vendored secp256k1 C smoke test plus RIPEMD-160 standard and 55/56/63/64/65-byte padding-boundary vectors checked against OpenSSL and the pinned HSD implementation | Pass |
 | Performance | 505.736 shares/second/core (minimum 100); 4 MiB reconstruction in 32.318 ms (maximum 1,000 ms); 100,000-entry payout verification in 62.442 ms (maximum 100 ms) | Pass |
 | Dependency audits | Rust lockfiles had no vulnerability advisory; npm reported only the exact isolated-oracle exception described below | Pass with documented exceptions |
@@ -141,6 +141,24 @@ cache publication, and clean restart resumption. It remains bounded WAN
 evidence rather than complete checkpoint-range body replay, sustained
 reorganization/pruning qualification, an invalid corpus, or authority evidence.
 
+## HSRD canonical genesis qualification update
+
+On 2026-07-22, the pinned HSD oracle exported the complete canonical 452-byte
+genesis block for mainnet, testnet, regtest, and simnet directly from
+`lib/protocol/genesis-data.json` through `Network.genesisBlock`. HSD decoded
+and byte-round-tripped every block, matched each configured genesis hash,
+reported a valid body with height zero, and confirmed the shared
+2,002,210,000-unit genesis reward transaction.
+
+Native regressions decode those exact bytes and pass every network through the
+strict peer-style import path. They require canonical header/hash identity,
+body commitments, transaction-start and coinbase-height checks, active UTXO
+and undo connection, and a clean durable state-engine restart. Mainnet then
+connects the exact canonical block 1 through the same strict path, preserving
+HSD's distinction between its non-final-looking coinbase and ordinary
+transaction finality. Mutated height-zero rejection remains covered
+separately.
+
 ## Audit exceptions
 
 - RustSec reports `instant 0.1.13` as unmaintained through
@@ -157,7 +175,3 @@ pre-authority, defaults to shadow operation, and cannot provide native mainnet
 authority. Hardware, WAN, external protocol review, complete historical and
 invalid-corpus parity, and the other gaps in
 [HSRD readiness](hsrd/docs/readiness.md) remain release requirements.
-
-The pinned fixtures do not currently contain a complete canonical genesis
-block, so strict positive full-genesis block import is not covered end to end.
-Exact canonical header identity and mutated height-zero rejection are covered.

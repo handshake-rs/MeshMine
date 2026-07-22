@@ -10,7 +10,7 @@ Environment: `aarch64`, Rust/Cargo 1.89.0, Node.js 24.13.0, and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 329 all-feature tests, 323 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-21) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 333 all-feature tests, 327 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-21) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Seven fixture generators, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -98,6 +98,48 @@ qualify transaction-bearing historical script execution, the complete
 checkpoint range, sustained reorganizations, or persistent pruning-horizon
 discovery. The fixture and unit differential gates cover those route boundaries
 without converting this partial live replay into an authority claim.
+
+## HSRD transaction-bearing name-root qualification update
+
+On 2026-07-21 local time (2026-07-22 UTC), a fresh schema-14/profile
+`hsrd-mining-v10` WAL store replayed canonical mainnet bodies through active
+height 4,551 with five public peers. Targeted in-memory publication of each
+committed header/block record replaced the prior full durable-index rebuild on
+every successful block, removing the dominant historical replay bottleneck.
+
+The faster run exposed and then qualified HSD's two-stage name-tree timing.
+Canonical block 2,024 contains 105 `OPEN` outputs and changes HSD's working
+Urkel transaction, but headers continue to commit the last interval root.
+Canonical header roots observed by the final binary were:
+
+```text
+height 2024  0000000000000000000000000000000000000000000000000000000000000000
+height 2025  0000000000000000000000000000000000000000000000000000000000000000
+height 2052  0000000000000000000000000000000000000000000000000000000000000000
+height 2053  f8cd0cf9ae5c154d7aefbdaed84c6a30951c1707f01f0d86b9e731a73c3db789
+```
+
+HSRD now persists the working root separately from the header-visible root,
+advances the latter only at the network `treeInterval`, carries both root pairs
+through block undo/reorganization, retains both during node compaction, checks
+their timing and continuity at startup, and supplies the committed root to
+mining snapshots and API-v9 live comparison. The schema/profile and block-undo
+version bumps make this an explicit clean-reindex boundary.
+
+Before clean shutdown the run reported active height 4,466/stored height 4,467,
+1,024 tracked bodies, five connected outbound peers, zero failed or unavailable
+scheduler blocks, zero stored/contextual failed bodies, and zero orphan
+evictions. The same store reopened under a new runtime instance, passed startup
+root/pin/undo invariants, connected 64 more blocks through active/stored height
+4,551, and again reported zero failed, unavailable, contextual-failed, or
+evicted bodies. Best-header synchronization independently reached canonical
+height 339,289.
+
+This qualifies the transaction-start boundary, the first mainnet OPEN burst,
+multiple name-tree commitments, subsequent early auction traffic, targeted
+cache publication, and clean restart resumption. It remains bounded WAN
+evidence rather than complete checkpoint-range body replay, sustained
+reorganization/pruning qualification, an invalid corpus, or authority evidence.
 
 ## Audit exceptions
 

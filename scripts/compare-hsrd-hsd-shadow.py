@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare an hsrd active tip and resulting name root with a live HSD node.
+"""Compare an hsrd active tip and next header name root with a live HSD node.
 
 The comparison is deliberately external to hsrd's authority boundary.  HSD is
 queried through an operator-selected ``hsd-cli`` executable and hsrd is read
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 SCHEMA_VERSION = 1
-MINIMUM_HSRD_API_VERSION = 8
+MINIMUM_HSRD_API_VERSION = 9
 MAX_HTTP_BYTES = 2 * 1024 * 1024
 MAX_COMMAND_BYTES = 8 * 1024 * 1024
 MAX_STATE_BYTES = 1024 * 1024

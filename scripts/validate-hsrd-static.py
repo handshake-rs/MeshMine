@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HSD_REVISION = "698e252ebc7b5c1dd0a9587e342fdd153d020ae4"
 HSD_REPOSITORY = "handshake-org/hsd"
 MANIFEST_PATH = ROOT / "hsrd/fixtures/hsd/manifest-v1.json"
-EXPECTED_STORE_SCHEMA = 13
-EXPECTED_STORAGE_PROFILE = "hsrd-mining-v9"
+EXPECTED_STORE_SCHEMA = 14
+EXPECTED_STORAGE_PROFILE = "hsrd-mining-v10"
 SKIP_PARTS = {".git", "node_modules", "target", "__pycache__"}
 
 
@@ -342,7 +342,7 @@ def validate_schema_coordination() -> None:
     require_tokens(
         node_source,
         (
-            "HSRD_DIAGNOSTIC_API_VERSION: u32 = 8",
+            "HSRD_DIAGNOSTIC_API_VERSION: u32 = 9",
             "store_validated_alternate",
             "store_failed_block",
             "best_chain_activation_plan",
@@ -352,10 +352,13 @@ def validate_schema_coordination() -> None:
             "validate_reorg_plan",
             "validate_reorg_request_shape",
             "stage_best_header_if_more_work",
+            "cache_committed_block_records",
             "next_chain_epoch",
             "validate_durable_chain_invariants",
             "previous_retained_tree_root",
+            "previous_retained_committed_tree_root",
             "tip_resulting_tree_root",
+            "tip_resulting_committed_tree_root",
             "breaks retained name-tree root continuity",
             "active tip's resulting root",
             'b"undo-pruning/v1"',
@@ -373,6 +376,8 @@ def validate_schema_coordination() -> None:
             "shadow_active_state_connector_reorganizes_a_stored_best_branch",
             "contextual_invalid_ancestor_is_durable_and_exact",
             "local_state_fault_does_not_poison_a_stored_branch",
+            "valid_block_commit_publishes_targeted_caches_without_full_index_rescan",
+            "mining_snapshot_uses_interval_committed_name_root",
         ),
         "best-chain activation",
     )
@@ -583,9 +588,13 @@ def validate_consensus_boundaries() -> None:
             "validate_persisted_name_tree",
             "validate_persisted_name_tree_root",
             "MetaKey::NameTreeRoot",
+            "MetaKey::NameTreeCommitRoot",
+            "load_stored_name_tree_commit_root",
             "HeaderTreeRootMismatch",
             "previous_tree_root",
             "resulting_tree_root",
+            "previous_committed_tree_root",
+            "resulting_committed_tree_root",
             "RejectSpecialCoinbaseIssuance",
             "AirdropCoinbaseIssuanceVerifier",
             "NativeAirdropSignatureVerifier::new()",
@@ -593,6 +602,7 @@ def validate_consensus_boundaries() -> None:
             "BlockSigopsExceeded",
             "block_sigop_limit_is_contextual_and_atomic",
             "canonical_mainnet_terminal_and_third_generation_claims_replay",
+            "mainnet_2024_open_state_waits_for_tree_interval_commitment",
         ),
         "state transition",
     )
@@ -630,11 +640,15 @@ def validate_consensus_boundaries() -> None:
     root_record_check = state_source.find(
         "validate_persisted_name_tree_root(snapshot, inherited_tree_root)"
     )
+    commit_root_check = state_source.find(
+        "let inherited_committed_tree_root = load_stored_name_tree_commit_root"
+    )
     transition_start = state_source.find("for (transaction_index, transaction)")
     if (
         connect_root_check < 0
         or root_record_check < connect_root_check
-        or transition_start < root_record_check
+        or commit_root_check < root_record_check
+        or transition_start < commit_root_check
     ):
         fail("block header name-tree commitment is not verified before state mutation")
 
@@ -647,8 +661,10 @@ def validate_consensus_boundaries() -> None:
         (
             "verify_stored_name_tree_root(&snapshot)",
             "validate_persisted_name_tree(&snapshot, durable_name_tree_root)",
+            "load_stored_name_tree_commit_root(&snapshot)",
+            "validate_persisted_name_tree(&snapshot, durable_name_tree_commit_root)",
             "status.tree_root_valid = state_summary.validation.tree_root_valid",
-            "block.header.tree_root != *undo.previous_tree_root.as_bytes()",
+            "block.header.tree_root != *undo.previous_committed_tree_root.as_bytes()",
         ),
         "node name-tree binding",
     )
@@ -907,7 +923,7 @@ def validate_shadow_sync() -> None:
     require_tokens(
         comparison,
         (
-            "MINIMUM_HSRD_API_VERSION = 8",
+            "MINIMUM_HSRD_API_VERSION = 9",
             "probe_header_once",
             "compare_header_deployments",
             '"deployments-script-policy"',

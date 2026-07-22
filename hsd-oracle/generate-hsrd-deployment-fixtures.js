@@ -11,13 +11,16 @@ const fs = require('fs');
 const path = require('path');
 
 const {installMemoryOnlyDatabaseShim} = require('./memory-db-shim');
-const hsdRoot = path.dirname(require.resolve('hsd/package.json'));
+const hsdRoot = process.env.HSD_DIR
+  ? path.resolve(process.env.HSD_DIR)
+  : path.dirname(require.resolve('hsd/package.json'));
 installMemoryOnlyDatabaseShim(hsdRoot);
 
-const Chain = require('hsd/lib/blockchain/chain');
-const chainCommon = require('hsd/lib/blockchain/common');
-const Network = require('hsd/lib/protocol/network');
-const scriptCommon = require('hsd/lib/script/common');
+const BN = require(require.resolve('bcrypto/lib/bn.js', {paths: [hsdRoot]}));
+const Chain = require(path.join(hsdRoot, 'lib/blockchain/chain'));
+const chainCommon = require(path.join(hsdRoot, 'lib/blockchain/common'));
+const Network = require(path.join(hsdRoot, 'lib/protocol/network'));
+const scriptCommon = require(path.join(hsdRoot, 'lib/script/common'));
 
 const REVISION = '698e252ebc7b5c1dd0a9587e342fdd153d020ae4';
 const ROOT = path.resolve(__dirname, '..');
@@ -232,6 +235,7 @@ function networkJson(name) {
     name,
     activationThreshold: network.activationThreshold,
     minerWindow: network.minerWindow,
+    txStart: network.txStart,
     goosigStop: network.goosigStop,
     deflationHeight: network.deflationHeight,
     claimPrefix: network.claimPrefix,
@@ -244,6 +248,124 @@ function networkJson(name) {
     })),
     deployments: network.deploys.map(deploymentJson)
   };
+}
+
+async function transactionStartCase(id, network, height, shape) {
+  const previous = {
+    height: height - 1,
+    hash: Buffer.alloc(32, height & 0xff),
+    chainwork: new BN(0)
+  };
+  const covenant = {
+    isNone() {
+      return shape.coinbaseCovenantNone;
+    }
+  };
+  const coinbase = {
+    outputs: Array.from(
+      {length: shape.coinbaseOutputs},
+      () => ({covenant})
+    )
+  };
+  const block = {
+    version: 0,
+    prevBlock: previous.hash,
+    merkleRoot: Buffer.alloc(32, 0x11),
+    witnessRoot: Buffer.alloc(32, 0x12),
+    treeRoot: Buffer.alloc(32, 0x13),
+    reservedRoot: Buffer.alloc(32, 0x14),
+    time: 1,
+    bits: network.pow.bits,
+    nonce: 0,
+    extraNonce: Buffer.alloc(24),
+    mask: Buffer.alloc(32),
+    txs: [coinbase],
+    isMemory() {
+      return false;
+    },
+    hash() {
+      return Buffer.alloc(32, 0x15);
+    }
+  };
+  while (block.txs.length < shape.transactions)
+    block.txs.push({outputs: []});
+
+  let invalidated = false;
+  let continued = false;
+  const chain = {
+    network,
+    options: {spv: false},
+    tip: {chainwork: new BN(1).ushln(300)},
+    setInvalid() {
+      invalidated = true;
+    },
+    async saveAlternate() {
+      continued = true;
+    },
+    logStatus() {},
+    maybeSync() {}
+  };
+
+  let accepted = false;
+  let reason = null;
+  try {
+    await Chain.prototype.connect.call(chain, previous, block, chainCommon.flags.VERIFY_NONE);
+    accepted = true;
+  } catch (error) {
+    assert.strictEqual(error.type, 'VerifyError');
+    reason = error.reason;
+  }
+
+  assert.strictEqual(accepted, continued);
+  assert.strictEqual(invalidated, reason === 'no-tx-allowed-yet');
+  return {
+    id,
+    network: network.type,
+    txStart: network.txStart,
+    height,
+    transactions: shape.transactions,
+    coinbaseOutputs: shape.coinbaseOutputs,
+    coinbaseCovenantNone: shape.coinbaseCovenantNone,
+    accepted,
+    reason
+  };
+}
+
+async function transactionStartCases() {
+  const main = Network.get('main');
+  const regtest = Network.get('regtest');
+  return Promise.all([
+    transactionStartCase('main-ordinary-before-start', main, main.txStart - 1, {
+      transactions: 1,
+      coinbaseOutputs: 1,
+      coinbaseCovenantNone: true
+    }),
+    transactionStartCase('main-extra-transaction-before-start', main, main.txStart - 1, {
+      transactions: 2,
+      coinbaseOutputs: 1,
+      coinbaseCovenantNone: true
+    }),
+    transactionStartCase('main-extra-coinbase-output-before-start', main, main.txStart - 1, {
+      transactions: 1,
+      coinbaseOutputs: 2,
+      coinbaseCovenantNone: true
+    }),
+    transactionStartCase('main-name-coinbase-before-start', main, main.txStart - 1, {
+      transactions: 1,
+      coinbaseOutputs: 1,
+      coinbaseCovenantNone: false
+    }),
+    transactionStartCase('main-extra-transaction-at-start', main, main.txStart, {
+      transactions: 2,
+      coinbaseOutputs: 1,
+      coinbaseCovenantNone: true
+    }),
+    transactionStartCase('regtest-extra-transaction-height-one', regtest, 1, {
+      transactions: 2,
+      coinbaseOutputs: 1,
+      coinbaseCovenantNone: true
+    })
+  ]);
 }
 
 function historicalCases() {
@@ -419,6 +541,7 @@ async function historicalValidationCases() {
         headerContext: true,
         deploymentState: true,
         absoluteFinality: true,
+        transactionStart: true,
         coinbaseHeight: true,
         claimAirdropSanity: true,
         claimAirdropCryptography: fullInputs,
@@ -442,7 +565,7 @@ async function historicalValidationCases() {
 
 async function makeFixture() {
   return {
-    schema: 3,
+    schema: 4,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: REVISION
@@ -456,7 +579,8 @@ async function makeFixture() {
     blockVersionCase: await makeBlockVersionCase(),
     deploymentEffectCases: await makeDeploymentEffectCases(),
     historicalCases: historicalCases(),
-    historicalValidationCases: await historicalValidationCases()
+    historicalValidationCases: await historicalValidationCases(),
+    transactionStartCases: await transactionStartCases()
   };
 }
 

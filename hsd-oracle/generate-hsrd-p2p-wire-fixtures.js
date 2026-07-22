@@ -12,7 +12,9 @@ const path = require('path');
 const bio = require('bufio');
 const Block = require('hsd/lib/primitives/block');
 const Headers = require('hsd/lib/primitives/headers');
+const TX = require('hsd/lib/primitives/tx');
 const InvItem = require('hsd/lib/primitives/invitem');
+const {CompactBlock, TXRequest, TXResponse} = require('hsd/lib/net/bip152');
 const NetAddress = require('hsd/lib/net/netaddress');
 const Framer = require('hsd/lib/net/framer');
 const packets = require('hsd/lib/net/packets');
@@ -60,6 +62,49 @@ function customHeaders() {
   header.extraNonce = Buffer.alloc(consensus.NONCE_SIZE, 0x06);
   header.mask = Buffer.alloc(32, 0x07);
   return header;
+}
+
+function customTransaction(tag) {
+  return new TX({
+    version: tag,
+    inputs: [{
+      prevout: {
+        hash: Buffer.alloc(32, tag),
+        index: tag
+      },
+      sequence: 0xffffff00 + tag,
+      witness: [Buffer.from([tag, tag + 1])]
+    }],
+    outputs: [{value: 1000 + tag}],
+    locktime: tag
+  });
+}
+
+function customCompactSource() {
+  const header = customHeaders();
+  const block = new Block();
+  block.nonce = header.nonce;
+  block.time = header.time;
+  block.prevBlock = header.prevBlock;
+  block.treeRoot = header.treeRoot;
+  block.extraNonce = header.extraNonce;
+  block.reservedRoot = header.reservedRoot;
+  block.witnessRoot = header.witnessRoot;
+  block.merkleRoot = header.merkleRoot;
+  block.version = header.version;
+  block.bits = header.bits;
+  block.mask = header.mask;
+  block.txs = [customTransaction(1), customTransaction(2), customTransaction(3)];
+  const request = new TXRequest({hash: block.hash(), indexes: [1, 2]});
+  return {
+    block,
+    compact: CompactBlock.fromBlock(
+      block,
+      Buffer.from('0102030405060708', 'hex')
+    ),
+    request,
+    response: TXResponse.fromBlock(block, request)
+  };
 }
 
 function frameCase(id, networkName, packet) {
@@ -142,6 +187,7 @@ function buildFixture() {
   const stop = Buffer.alloc(32, 0x33);
   const header = customHeaders();
   const block = new Block();
+  const compact = customCompactSource();
 
   const packetCases = [
     frameCase('version-main', 'main', version),
@@ -167,7 +213,10 @@ function buildFixture() {
     })),
     frameCase('feefilter-positive-regtest', 'regtest', new packets.FeeFilterPacket(1234567)),
     frameCase('feefilter-negative-regtest', 'regtest', new packets.FeeFilterPacket(-1234567)),
-    frameCase('sendcmpct-regtest', 'regtest', new packets.SendCmpctPacket(1, 2))
+    frameCase('sendcmpct-regtest', 'regtest', new packets.SendCmpctPacket(1, 2)),
+    frameCase('cmpctblock-regtest', 'regtest', new packets.CmpctBlockPacket(compact.compact)),
+    frameCase('getblocktxn-regtest', 'regtest', new packets.GetBlockTxnPacket(compact.request)),
+    frameCase('blocktxn-regtest', 'regtest', new packets.BlockTxnPacket(compact.response))
   ];
 
   const packetTypes = Object.entries(packets.types)

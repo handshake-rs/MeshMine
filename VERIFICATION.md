@@ -12,7 +12,7 @@ architecture with Node.js 24.13.0 and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 358 all-feature tests, 349 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 360 all-feature tests, 351 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -317,6 +317,34 @@ Deterministic regressions cover group-byte parity, discovered selection,
 simultaneous attempt reservation, and explicit collision bypass. This closes
 the concrete HSD network-prefix selection gap; ASN-based diversity, Brontide,
 long-lived reputation, and adversarial WAN qualification remain open.
+
+### HSD compact-block wire and reconstruction parity
+
+The pinned HSD `bip152.js`, packet, and pool paths were used as the executable
+reference for compact-block version 1. The deterministic oracle now emits exact
+SENDCMPCT, CMPCTBLOCK, GETBLOCKTXN, and BLOCKTXN frames for a transaction-bearing
+regtest block. Rust decodes and re-encodes every frame byte-for-byte, including
+the header/nonce-derived SipHash key, 48-bit witness short IDs, prefilled
+coinbase, and differential transaction indexes.
+
+The shadow runtime advertises request-only compact support, selects compact
+inventory only after valid peer negotiation, fills short IDs from a bounded
+mining-engine mempool snapshot, and requests exactly the missing transactions
+from the owning peer. Complete reconstructions enter the same stateless and
+ordered validation path as full blocks. Pending state is capped at 15 blocks
+per peer and 128 globally, expires on HSD's 30-second block-transaction
+response deadline, and is discarded on disconnect. Duplicate IDs or
+recoverable response mismatches use
+the bounded score-10 full-block fallback; malformed or unavailable requests use
+the score-100 path.
+
+A managed-peer raw-TCP regression reserves a native two-transaction block,
+invokes the negotiated compact handler, observes the exact GETBLOCKTXN on the
+socket, supplies BLOCKTXN, and waits for normal block validation to finish.
+Implementation bounds cover randomized compact responses, the recent 15-block
+transaction window, peer ownership, and diagnostic accounting. This closes
+local wire/reconstruction/serving parity; sustained compact-relay WAN
+qualification remains part of broader adversarial network testing.
 
 ## HSRD transaction-bearing name-root qualification update
 

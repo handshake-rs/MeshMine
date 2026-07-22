@@ -11,8 +11,11 @@ const path = require('path');
 
 const random = require('bcrypto/lib/random');
 const Address = require('hsd/lib/primitives/address');
+const AirdropProof = require('hsd/lib/primitives/airdropproof');
 const Output = require('hsd/lib/primitives/output');
 const BlockTemplate = require('hsd/lib/mining/template');
+const {BlockAirdrop} = BlockTemplate;
+const AirdropEntry = require('hsd/lib/mempool/airdropentry');
 const consensus = require('hsd/lib/protocol/consensus');
 const Network = require('hsd/lib/protocol/network');
 const policy = require('hsd/lib/protocol/policy');
@@ -27,6 +30,15 @@ const TARGET = path.resolve(
   'hsd',
   'mining',
   'template-v1.json'
+);
+const AIRDROP_FIXTURE = path.resolve(
+  __dirname,
+  '..',
+  'hsrd',
+  'fixtures',
+  'hsd',
+  'airdrops',
+  'codec-v1.json'
 );
 const WRITE = process.argv.includes('--write');
 const CHECK = process.argv.includes('--check') || !WRITE;
@@ -209,10 +221,67 @@ function mempoolDynamicPolicy() {
   };
 }
 
+function specialAirdropPolicy() {
+  const fixture = JSON.parse(fs.readFileSync(AIRDROP_FIXTURE, 'utf8'));
+  const proof = AirdropProof.decode(Buffer.from(fixture.faucet.raw, 'hex'));
+  const entry = AirdropEntry.fromAirdrop(proof, 10);
+  const blockItem = BlockAirdrop.fromEntry(entry);
+  const source = fs.readFileSync(
+    require.resolve('hsd/lib/mining/miner'),
+    'utf8'
+  );
+  assert.match(source, /if \(attempt\.airdrops\.length >= 10\)/);
+
+  const network = Network.get('regtest');
+  const address = new Address();
+  address.fromPubkeyhash(Buffer.alloc(20, 0x09));
+  const originalRandomInt = random.randomInt;
+  const originalRandomBytes = random.randomBytes;
+  random.randomInt = () => 7;
+  random.randomBytes = size => Buffer.alloc(size, 0x00);
+  let coinbase;
+  try {
+    const attempt = new BlockTemplate({
+      height: 11,
+      interval: network.halvingInterval,
+      fees: 0,
+      coinbaseFlags: Buffer.from('hsrd', 'ascii'),
+      address
+    });
+    attempt.addAirdrop(proof);
+    coinbase = attempt.createCoinbase();
+  } finally {
+    random.randomInt = originalRandomInt;
+    random.randomBytes = originalRandomBytes;
+  }
+
+  return {
+    maximumPerBlock: 10,
+    proof: {
+      raw: proof.encode().toString('hex'),
+      hash: proof.hash().toString('hex'),
+      position: proof.position(),
+      value: proof.getValue(),
+      fee: proof.fee,
+      policySize: proof.getVirtualSize(),
+      memoryUsage: entry.memUsage(),
+      coinbaseWeight: blockItem.getWeight()
+    },
+    deterministicCoinbase: {
+      raw: coinbase.encode().toString('hex'),
+      txid: coinbase.txid(),
+      witnessHash: coinbase.witnessHash().toString('hex'),
+      weight: coinbase.getWeight(),
+      payoutValue: coinbase.outputs[0].value,
+      airdropValue: coinbase.outputs[1].value
+    }
+  };
+}
+
 function buildFixture() {
   const coinbase = deterministicCoinbase();
   return {
-    schema: 5,
+    schema: 6,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION
@@ -225,7 +294,8 @@ function buildFixture() {
     deterministicCoinbase: coinbase,
     mempoolSigopPolicy: mempoolSigopPolicy(coinbase.raw),
     mempoolStandardPolicy: mempoolStandardPolicy(coinbase.raw),
-    mempoolDynamicPolicy: mempoolDynamicPolicy()
+    mempoolDynamicPolicy: mempoolDynamicPolicy(),
+    specialAirdropPolicy: specialAirdropPolicy()
   };
 }
 

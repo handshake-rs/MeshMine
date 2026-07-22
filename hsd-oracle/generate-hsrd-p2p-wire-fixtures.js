@@ -13,6 +13,7 @@ const bio = require('bufio');
 const Block = require('hsd/lib/primitives/block');
 const Headers = require('hsd/lib/primitives/headers');
 const TX = require('hsd/lib/primitives/tx');
+const AirdropProof = require('hsd/lib/primitives/airdropproof');
 const InvItem = require('hsd/lib/primitives/invitem');
 const {CompactBlock, TXRequest, TXResponse} = require('hsd/lib/net/bip152');
 const NetAddress = require('hsd/lib/net/netaddress');
@@ -30,6 +31,15 @@ const TARGET = path.resolve(
   'hsd',
   'p2p',
   'wire-v1.json'
+);
+const AIRDROP_FIXTURE = path.resolve(
+  __dirname,
+  '..',
+  'hsrd',
+  'fixtures',
+  'hsd',
+  'airdrops',
+  'codec-v1.json'
 );
 const WRITE = process.argv.includes('--write');
 const CHECK = process.argv.includes('--check') || !WRITE;
@@ -188,6 +198,10 @@ function buildFixture() {
   const header = customHeaders();
   const block = new Block();
   const compact = customCompactSource();
+  const airdropFixture = JSON.parse(fs.readFileSync(AIRDROP_FIXTURE, 'utf8'));
+  const airdrop = AirdropProof.decode(
+    Buffer.from(airdropFixture.faucet.raw, 'hex')
+  );
 
   const packetCases = [
     frameCase('version-main', 'main', version),
@@ -216,7 +230,8 @@ function buildFixture() {
     frameCase('sendcmpct-regtest', 'regtest', new packets.SendCmpctPacket(1, 2)),
     frameCase('cmpctblock-regtest', 'regtest', new packets.CmpctBlockPacket(compact.compact)),
     frameCase('getblocktxn-regtest', 'regtest', new packets.GetBlockTxnPacket(compact.request)),
-    frameCase('blocktxn-regtest', 'regtest', new packets.BlockTxnPacket(compact.response))
+    frameCase('blocktxn-regtest', 'regtest', new packets.BlockTxnPacket(compact.response)),
+    frameCase('airdrop-regtest', 'regtest', new packets.AirdropPacket(airdrop))
   ];
 
   const packetTypes = Object.entries(packets.types)
@@ -225,7 +240,7 @@ function buildFixture() {
     .map(([name, value]) => ({name, value}));
 
   return {
-    schema: 1,
+    schema: 2,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION

@@ -11,6 +11,7 @@ const path = require('path');
 
 const random = require('bcrypto/lib/random');
 const Address = require('hsd/lib/primitives/address');
+const Output = require('hsd/lib/primitives/output');
 const BlockTemplate = require('hsd/lib/mining/template');
 const consensus = require('hsd/lib/protocol/consensus');
 const Network = require('hsd/lib/protocol/network');
@@ -127,10 +128,49 @@ function mempoolSigopPolicy(transactionRaw) {
   };
 }
 
+function mempoolStandardPolicy(transactionRaw) {
+  const baseline = () => TX.decode(Buffer.from(transactionRaw, 'hex'));
+  const cases = [];
+  let tx = baseline();
+  cases.push({name: 'baseline', accepted: tx.checkStandard()[0]});
+  tx = baseline();
+  tx.version = 1;
+  cases.push({name: 'version-one', accepted: tx.checkStandard()[0]});
+  tx = baseline();
+  tx.outputs[0].address = new Address().fromProgram(1, Buffer.alloc(20, 1));
+  cases.push({name: 'unknown-address', accepted: tx.checkStandard()[0]});
+  tx = baseline();
+  tx.outputs[0].value = 1;
+  cases.push({name: 'dust', accepted: tx.checkStandard()[0]});
+  tx = baseline();
+  const nulldata = new Output();
+  nulldata.address.fromNulldata(Buffer.alloc(2, 1));
+  tx.outputs = [nulldata, nulldata.clone()];
+  cases.push({name: 'multiple-nulldata', accepted: tx.checkStandard()[0]});
+
+  const output = new Output();
+  output.value = 1;
+  output.address.fromPubkeyhash(Buffer.alloc(20, 2));
+  return {
+    maximumVersion: policy.MAX_TX_VERSION,
+    maximumWeight: policy.MAX_TX_WEIGHT,
+    maximumWitnessStack: policy.MAX_P2WSH_STACK,
+    maximumWitnessPush: policy.MAX_P2WSH_PUSH,
+    maximumWitnessScript: policy.MAX_P2WSH_SIZE,
+    absurdFeeFactor: policy.ABSURD_FEE_FACTOR,
+    dustThreshold: output.getDustThreshold(policy.MIN_RELAY),
+    requireStandard: ['main', 'testnet', 'regtest', 'simnet'].map(name => ({
+      network: name,
+      required: Network.get(name).requireStandard
+    })),
+    cases
+  };
+}
+
 function buildFixture() {
   const coinbase = deterministicCoinbase();
   return {
-    schema: 2,
+    schema: 3,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION
@@ -141,7 +181,8 @@ function buildFixture() {
     },
     subsidyCases: subsidyCases(),
     deterministicCoinbase: coinbase,
-    mempoolSigopPolicy: mempoolSigopPolicy(coinbase.raw)
+    mempoolSigopPolicy: mempoolSigopPolicy(coinbase.raw),
+    mempoolStandardPolicy: mempoolStandardPolicy(coinbase.raw)
   };
 }
 

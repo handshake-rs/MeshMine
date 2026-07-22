@@ -209,9 +209,10 @@ def extract_hsrd(status: dict[str, Any], shadow: dict[str, Any]) -> dict[str, An
 
     authority = require_object(status.get("authority"), "hsrd authority")
     authority_mode = require_string(authority.get("mode"), "hsrd authority mode")
-    if authority_mode not in {"disabled", "shadow"}:
+    if authority_mode not in {"disabled", "shadow", "native"}:
         raise ProbeError(
-            f"live comparison requires disabled or shadow authority, got {authority_mode!r}"
+            "live comparison requires disabled, legacy shadow, or fail-closed "
+            f"native authority, got {authority_mode!r}"
         )
     if require_bool(
         authority.get("can_authorize_mining_templates"),
@@ -219,20 +220,20 @@ def extract_hsrd(status: dict[str, Any], shadow: dict[str, Any]) -> dict[str, An
     ):
         raise ProbeError("live comparison refuses a mining-authoritative hsrd instance")
 
-    if not require_bool(shadow.get("enabled"), "shadow-sync enabled flag"):
-        raise ProbeError("shadow-sync diagnostics report the runtime disabled")
-    if not require_bool(shadow.get("active_state"), "shadow-sync active-state flag"):
-        raise ProbeError("shadow-sync diagnostics report active-state connection disabled")
-    if require_bool(shadow.get("observation_only"), "shadow-sync observation flag"):
-        raise ProbeError("shadow-sync diagnostics still report observation-only mode")
+    if not require_bool(shadow.get("enabled"), "native-sync enabled flag"):
+        raise ProbeError("native-sync diagnostics report the runtime disabled")
+    if not require_bool(shadow.get("active_state"), "native-sync active-state flag"):
+        raise ProbeError("native-sync diagnostics report active-state connection disabled")
+    if require_bool(shadow.get("observation_only"), "native-sync observation flag"):
+        raise ProbeError("native-sync diagnostics still report observation-only mode")
 
     block_hash = normalize_hash(status.get("best_block_hash"), "hsrd active block hash")
-    sync = require_object(shadow.get("sync"), "shadow-sync scheduler snapshot")
-    active_tip = require_object(sync.get("active_tip"), "shadow-sync active tip")
-    sync_hash = normalize_hash(active_tip.get("hash"), "shadow-sync active-tip hash")
-    sync_height = require_int(active_tip.get("height"), "shadow-sync active-tip height")
+    sync = require_object(shadow.get("sync"), "native-sync scheduler snapshot")
+    active_tip = require_object(sync.get("active_tip"), "native-sync active tip")
+    sync_hash = normalize_hash(active_tip.get("hash"), "native-sync active-tip hash")
+    sync_height = require_int(active_tip.get("height"), "native-sync active-tip height")
     if sync_hash != block_hash or sync_height != height:
-        raise ProbeError("hsrd status and shadow scheduler active tips are not one snapshot")
+        raise ProbeError("hsrd status and native scheduler active tips are not one snapshot")
 
     parity = require_object(status.get("parity"), "hsrd parity status")
     return {
@@ -249,7 +250,7 @@ def extract_hsrd(status: dict[str, Any], shadow: dict[str, Any]) -> dict[str, An
         ),
         "authority_mode": authority_mode,
         "runtime_instance": require_string(
-            shadow.get("runtime_instance"), "shadow-sync runtime instance"
+            shadow.get("runtime_instance"), "native-sync runtime instance"
         ),
         "oracle_revision": require_string(
             parity.get("oracle_revision"), "hsrd HSD oracle revision"
@@ -270,28 +271,29 @@ def extract_hsrd_header(status: dict[str, Any], shadow: dict[str, Any]) -> dict[
 
     authority = require_object(status.get("authority"), "hsrd authority")
     authority_mode = require_string(authority.get("mode"), "hsrd authority mode")
-    if authority_mode not in {"disabled", "shadow"}:
+    if authority_mode not in {"disabled", "shadow", "native"}:
         raise ProbeError(
-            f"header comparison requires disabled or shadow authority, got {authority_mode!r}"
+            "header comparison requires disabled, legacy shadow, or fail-closed "
+            f"native authority, got {authority_mode!r}"
         )
     if require_bool(
         authority.get("can_authorize_mining_templates"),
         "hsrd mining-template authority",
     ):
         raise ProbeError("header comparison refuses a mining-authoritative hsrd instance")
-    if not require_bool(shadow.get("enabled"), "shadow-sync enabled flag"):
-        raise ProbeError("shadow-sync diagnostics report the runtime disabled")
-    if not require_bool(shadow.get("headers_only"), "shadow-sync headers-only flag"):
-        raise ProbeError("header comparison requires --shadow-sync-headers-only")
+    if not require_bool(shadow.get("enabled"), "native-sync enabled flag"):
+        raise ProbeError("native-sync diagnostics report the runtime disabled")
+    if not require_bool(shadow.get("headers_only"), "native-sync headers-only flag"):
+        raise ProbeError("header comparison requires --native-sync-headers-only")
 
-    sync = require_object(shadow.get("sync"), "shadow-sync scheduler snapshot")
-    sync_tip = require_object(sync.get("best_header"), "shadow-sync best header")
-    height = require_int(sync_tip.get("height"), "shadow-sync best-header height")
-    block_hash = normalize_hash(sync_tip.get("hash"), "shadow-sync best-header hash")
+    sync = require_object(shadow.get("sync"), "native-sync scheduler snapshot")
+    sync_tip = require_object(sync.get("best_header"), "native-sync best header")
+    height = require_int(sync_tip.get("height"), "native-sync best-header height")
+    block_hash = normalize_hash(sync_tip.get("hash"), "native-sync best-header hash")
     if require_int(status.get("best_header_height"), "hsrd best-header height") != height:
-        raise ProbeError("hsrd status and shadow scheduler best-header heights disagree")
+        raise ProbeError("hsrd status and native scheduler best-header heights disagree")
     if normalize_hash(status.get("best_header_hash"), "hsrd best-header hash") != block_hash:
-        raise ProbeError("hsrd status and shadow scheduler best-header hashes disagree")
+        raise ProbeError("hsrd status and native scheduler best-header hashes disagree")
 
     parity = require_object(status.get("parity"), "hsrd parity status")
     return {
@@ -301,10 +303,10 @@ def extract_hsrd_header(status: dict[str, Any], shadow: dict[str, Any]) -> dict[
         "block_hash": block_hash,
         "authority_mode": authority_mode,
         "runtime_instance": require_string(
-            shadow.get("runtime_instance"), "shadow-sync runtime instance"
+            shadow.get("runtime_instance"), "native-sync runtime instance"
         ),
         "received_headers": require_int(
-            shadow.get("received_headers"), "shadow-sync received headers"
+            shadow.get("received_headers"), "native-sync received headers"
         ),
         "oracle_revision": require_string(
             parity.get("oracle_revision"), "hsrd HSD oracle revision"
@@ -564,7 +566,7 @@ def probe_once(
     previous_observation: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], bool | None]:
     status_url = f"{hsrd_url}/api/v1/status"
-    shadow_url = f"{hsrd_url}/api/v1/shadow-sync"
+    shadow_url = f"{hsrd_url}/api/v1/native-sync"
     hsrd_before = extract_hsrd(
         read_http_json(status_url, timeout),
         read_http_json(shadow_url, timeout),
@@ -650,7 +652,7 @@ def probe_once(
 
 def probe_header_once(hsrd_url: str, cli: HsdCli, timeout: float) -> dict[str, Any]:
     status_url = f"{hsrd_url}/api/v1/status"
-    shadow_url = f"{hsrd_url}/api/v1/shadow-sync"
+    shadow_url = f"{hsrd_url}/api/v1/native-sync"
     deployments_url = f"{hsrd_url}/api/v1/header-deployments"
     hsrd_before = extract_hsrd_header(
         read_http_json(status_url, timeout),

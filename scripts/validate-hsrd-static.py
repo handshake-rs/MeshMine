@@ -905,7 +905,7 @@ def validate_shadow_sync() -> None:
     require_tokens(
         shadow_sync,
         (
-            "Shadow sync live P2P is non-authoritative",
+            "native sync live P2P requires disabled, shadow, or native authority mode",
             "MAX_SHADOW_SYNC_PEERS",
             "MAX_SHADOW_SYNC_VALIDATION_WORKERS",
             "MAX_SHADOW_SYNC_VALIDATION_QUEUE",
@@ -949,14 +949,14 @@ def validate_shadow_sync() -> None:
             "PersistCheckpoint",
             "observation_only: !shadow_sync_config.connect_active_state",
             "runtime_instance: runtime_instance_id()",
-            '"/api/v1/shadow-sync"',
+            '"/api/v1/native-sync"',
             "handle_shadow_sync_diagnostics",
             '"/api/v1/header-deployments"',
             "handle_header_deployments",
             '"/api/v1/mining-engine"',
             "handle_mining_engine_diagnostics",
         ),
-        "Shadow sync node supervisor",
+        "Native sync node supervisor",
     )
     if "submit_mining_candidate" in shadow_sync:
         fail("Shadow sync path contains a mining-authority entrypoint")
@@ -990,7 +990,7 @@ def validate_shadow_sync() -> None:
         node_lib,
         (
             "mod shadow_sync;",
-            "pub use shadow_sync::{ShadowSyncConfig, ShadowSyncDiagnostics};",
+            "NativeSyncConfig, NativeSyncDiagnostics",
             "pub shadow_sync: ShadowSyncConfig",
             "run_shadow_sync_until_shutdown",
             "validate_canonical_shadow_import",
@@ -998,20 +998,20 @@ def validate_shadow_sync() -> None:
             "shadow_active_state_direct_progress_yields_between_small_atomic_slices",
             "shadow_active_state_reorg_keeps_the_full_configured_atomic_bound",
         ),
-        "Shadow sync node integration",
+        "Native sync node integration",
     )
 
     main_source = read_text(ROOT / "hsrd/crates/hns-node/src/main.rs")
     require_tokens(
         main_source,
         (
-            "shadow_sync: bool",
-            "shadow_sync_headers_only: bool",
-            "shadow_sync_active_state: bool",
+            "native_sync: bool",
+            "native_sync_headers_only: bool",
+            "native_sync_observe_only: bool",
             "p2p_discovery: bool",
             "maximum_known_addresses: usize",
             "active_state_connect_batch: usize",
-            "shadow_sync_poll_ms: u64",
+            "native_sync_poll_ms: u64",
             "compact_name_tree_on_startup: bool",
             "name_tree_compaction_interval: u32",
             "mining_engine: bool",
@@ -1020,7 +1020,7 @@ def validate_shadow_sync() -> None:
             "validation_workers: usize",
             "orphan_bytes: usize",
         ),
-        "Shadow sync CLI",
+        "Native sync CLI",
     )
     for stale_option in ("config_file", "metrics_bind"):
         if stale_option in main_source:

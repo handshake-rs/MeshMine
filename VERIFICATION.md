@@ -189,6 +189,24 @@ This qualifies restart persistence and gap recovery for bounded early-mainnet
 canonical body scheduling. It is not complete historical replay, sustained
 reorganization/pruning evidence, or authority qualification.
 
+### Native Brontide mainnet startup smoke
+
+On 2026-07-22, a clean temporary datastore ran with `--authority-mode native
+--native-sync --p2p-discovery`; no HSD process, RPC, or parent oracle was
+present. Four pinned key-bearing fixed seeds completed Brontide and
+VERSION/VERACK, advertising mainnet height 339,343. Within the bounded startup
+sample, hsrd imported 28,000 headers, advanced both active and contiguous stored
+state to height 189, received 39 bodies, durably stored 23, and connected 21.
+All four peers remained Ready, 1,001 body reservations stayed within the 1,024
+bound, and failed, unavailable, contextual-failure, orphan, rejected-message,
+and runtime-error counters remained zero. The 32-byte restart identity was mode
+`0600`. The process stopped cleanly and the 7.9 MiB temporary datastore was
+removed.
+
+This proves live public-network Brontide bootstrap and native early-mainnet
+header/body/active-state progress. It is a startup smoke, not full-IBD or
+performance qualification, and does not open the mining authority gate.
+
 ### Earlier seed-only plaintext peer discovery (superseded)
 
 This historical qualification predates native Brontide. Current public-network
@@ -423,7 +441,7 @@ separately.
 
 This result verifies the integrated research source tree and its reproducible
 local gates. It does not certify production readiness. HSRD remains
-pre-authority, defaults to shadow operation, and cannot provide native mainnet
-authority. Hardware, WAN, external protocol review, complete historical and
-invalid-corpus parity, and the other gaps in
+pre-authority, defaults to fail-closed native synchronization, and cannot yet
+provide native mainnet mining authority. Hardware, WAN, external protocol
+review, complete historical and invalid-corpus parity, and the other gaps in
 [HSRD readiness](hsrd/docs/readiness.md) remain release requirements.

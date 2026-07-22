@@ -497,6 +497,8 @@ def validate_consensus_boundaries() -> None:
             "NativeSignatureVerifier",
             "is_consensus_complete",
             "block_finality_does_not_apply_to_the_coinbase",
+            "validate_coinbase_height",
+            "coinbase_height_is_a_separate_contextual_commitment",
         ),
         "consensus boundary",
     )
@@ -508,6 +510,9 @@ def validate_consensus_boundaries() -> None:
             "Secp256k1Verifier",
             "SignatureBackendUnavailable",
             "verify_witness_program",
+            "count_script_sigops",
+            "transaction_sigops",
+            "sigop_count_matches_hsd_witness_program_rules",
         ),
         "script authorization",
     )
@@ -523,6 +528,8 @@ def validate_consensus_boundaries() -> None:
             "compute_block_version_from_state",
             "historical_validation_plan_matches_hsd_routes_and_fails_closed",
             "mainnet-block-1-coinbase-finality-exemption",
+            "pub coinbase_height: bool",
+            "pub block_sigops: bool",
         ),
         "historical deployment validation",
     )
@@ -550,6 +557,7 @@ def validate_consensus_boundaries() -> None:
     state_source = read_text(ROOT / "hsrd/crates/hns-state/src/lib.rs")
     ordered_tokens = (
         "verify_transaction_sequence_locks(",
+        "transaction_sigops(transaction, &input_coins)",
         "verify_transaction_inputs(",
         "verify_transaction_covenant_links(transaction",
         "apply_transaction_name_covenants(",
@@ -558,8 +566,8 @@ def validate_consensus_boundaries() -> None:
     positions = [state_source.find(token) for token in ordered_tokens]
     if any(position < 0 for position in positions) or positions != sorted(positions):
         fail(
-            "relative locks, input authorization, covenant linkage, name transitions, "
-            "and spend staging are not ordered fail-closed"
+            "sigop limits, relative locks, input authorization, covenant linkage, "
+            "name transitions, and spend staging are not ordered fail-closed"
         )
 
     require_tokens(
@@ -582,6 +590,8 @@ def validate_consensus_boundaries() -> None:
             "AirdropCoinbaseIssuanceVerifier",
             "NativeAirdropSignatureVerifier::new()",
             "chain_context.block_time(request.height - 1)?",
+            "BlockSigopsExceeded",
+            "block_sigop_limit_is_contextual_and_atomic",
             "canonical_mainnet_terminal_and_third_generation_claims_replay",
         ),
         "state transition",
@@ -590,8 +600,13 @@ def validate_consensus_boundaries() -> None:
     node_source = read_text(ROOT / "hsrd/crates/hns-node/src/lib.rs")
     require_tokens(
         node_source,
-        ("AirdropCoinbaseIssuanceVerifier::native(deployments)",),
-        "active-node airdrop verification",
+        (
+            "AirdropCoinbaseIssuanceVerifier::native(deployments)",
+            "validate_coinbase_height(&request.block, request.height)",
+            "peer_block_rejects_wrong_coinbase_height_before_storage",
+            "strict_mainnet_block_one_keeps_coinbase_finality_and_height_distinct",
+        ),
+        "active-node contextual verification",
     )
 
     goosig_source = read_text(ROOT / "hsrd/crates/hns-goosig/src/lib.rs")

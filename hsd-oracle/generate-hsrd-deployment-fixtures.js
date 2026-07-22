@@ -365,6 +365,50 @@ async function historicalValidationCases() {
       assert.strictEqual(historical, commitmentsOnly);
       assert.strictEqual(historical, !fullInputs);
 
+      // Drive the later contextual route far enough to prove that HSD checks
+      // the coinbase height even under checkpoints. The sigop check lives in
+      // verifyInputs, so its route follows fullInputs exactly.
+      const coinbaseHeightCalls = [];
+      const contextualBlock = {
+        prevBlock: previous.hash,
+        bits: network.pow.bits,
+        time: 1,
+        txs: [{inputs: [], outputs: []}],
+        hash() {
+          return Buffer.alloc(32, 0x34);
+        },
+        getCoinbaseHeight() {
+          coinbaseHeightCalls.push(height);
+          return height;
+        }
+      };
+      const contextualChain = {
+        network,
+        options,
+        verifyCheckpoint() {
+          return true;
+        },
+        isHistorical(prev) {
+          return Chain.prototype.isHistorical.call(this, prev);
+        },
+        async getTarget() {
+          return contextualBlock.bits;
+        },
+        async getMedianTime() {
+          return 0;
+        },
+        async getDeployments() {
+          return {};
+        }
+      };
+      await Chain.prototype.verify.call(
+        contextualChain,
+        contextualBlock,
+        previous,
+        chainCommon.flags.VERIFY_NONE
+      );
+      assert.deepStrictEqual(coinbaseHeightCalls, [height]);
+
       cases.push({
         checkpoints,
         height,
@@ -375,8 +419,10 @@ async function historicalValidationCases() {
         headerContext: true,
         deploymentState: true,
         absoluteFinality: true,
+        coinbaseHeight: true,
         claimAirdropSanity: true,
         claimAirdropCryptography: fullInputs,
+        blockSigops: fullInputs,
         sequenceLocks: fullInputs,
         inputValues: fullInputs,
         covenantLinks: fullInputs,
@@ -396,7 +442,7 @@ async function historicalValidationCases() {
 
 async function makeFixture() {
   return {
-    schema: 2,
+    schema: 3,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: REVISION

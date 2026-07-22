@@ -284,13 +284,14 @@ function createScriptExecutionFixture() {
       previousValue: item.value == null ? 1 : item.value,
       addressVersion: address.version,
       addressHash: address.hash.toString('hex'),
+      sigops: script.getSigops(),
       flags: flagNames,
       result
     };
   });
 
   return {
-    schema: 1,
+    schema: 2,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION,

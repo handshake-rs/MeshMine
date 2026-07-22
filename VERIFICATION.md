@@ -12,7 +12,7 @@ architecture with Node.js 24.13.0 and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 356 all-feature tests, 347 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 358 all-feature tests, 349 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -260,7 +260,8 @@ advanced to 339,308 before another clean flush.
 This qualifies the record codec, HSD stale policy, attempt/cooldown restoration,
 clean flush, and real RocksDB restart path. The address book remains
 non-consensus operational input; it does not make plaintext peers authoritative
-or close the long-lived reputation, peer-diversity, and Brontide gaps.
+or close the long-lived reputation, broader adversarial diversity, and
+Brontide gaps.
 
 ### Restart-durable HSD peer-ban qualification
 
@@ -291,8 +292,31 @@ final flush.
 No healthy public peer was deliberately banned to manufacture live evidence.
 The local transport, scheduler, persistence, and RocksDB restart regressions
 exercise the enforcement boundaries without poisoning the preserved mainnet
-address cache. Brontide, long-lived subthreshold reputation, address-group
-diversity, and broader adversarial WAN qualification remain release-blocking.
+address cache. Brontide, long-lived subthreshold reputation, broader
+peer-diversity controls, and adversarial WAN qualification remain
+release-blocking.
+
+### HSD outbound address-group parity
+
+The pinned HSD `NetAddress#getGroup()` and `Pool#getHost()` paths group IPv4
+peers by `/16`, ordinary IPv6 peers by `/32`, Hurricane Electric tunnels by
+`/36`, and normalize 6to4, Teredo, RFC6052, and RFC6145 addresses to their
+embedded IPv4 prefix. Explicit operator nodes bypass HSD's collision filter,
+while each live outbound attempt reserves its group.
+
+HSRD now produces the same canonical group bytes for pinned HSD vectors across
+those address families, including local and unroutable classifications.
+Discovered target filling greedily selects unique groups, and due socket
+attempts reserve groups within the same scheduling pass so simultaneous
+connections cannot race into one prefix. Explicit targets retain priority and
+may intentionally share a group, while their active or immediately due
+attempts exclude colliding discovered targets. Runtime diagnostics report the
+distinct groups represented by connected and connecting outbound peers.
+
+Deterministic regressions cover group-byte parity, discovered selection,
+simultaneous attempt reservation, and explicit collision bypass. This closes
+the concrete HSD network-prefix selection gap; ASN-based diversity, Brontide,
+long-lived reputation, and adversarial WAN qualification remain open.
 
 ## HSRD transaction-bearing name-root qualification update
 

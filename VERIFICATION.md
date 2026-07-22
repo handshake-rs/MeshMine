@@ -10,7 +10,7 @@ Environment: `aarch64`, Rust/Cargo 1.89.0, Node.js 24.13.0, and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 340 all-feature tests, 333 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 342 all-feature tests, 335 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -55,6 +55,24 @@ and restart recovery. Script *policy* parity does not mean historical script
 execution. It is explicitly not full block-body, script-execution, covenant,
 UTXO, name-state, Urkel-root, undo, reorganization, or active-state IBD replay
 evidence; those gates remain open below.
+
+### Complete pinned-HSD script-corpus qualification
+
+On 2026-07-22, the full script corpus was exported from the clean HSD source at
+revision `698e252ebc7b5c1dd0a9587e342fdd153d020ae4`. The exporter first reran
+every declared upstream case through HSD 8.99.0 and rejected any declared-result
+drift. The resulting schema-1 artifact contained exactly 876 sequential cases:
+409 accepted and 467 rejected across 22 normalized result classes. Its
+BLAKE2b-256 digest was
+`4079e8d0022d7ecbe7524dfa7fc310c7d2ed95a5f1cffb47a24ee5117b5a8991`.
+
+The native Rust verifier matched every execution result and every HSD sigop
+count. It now independently pins the oracle repository, revision, version,
+source description, exact case count and IDs, transaction witness bytes, and
+SHA3 witness-script address commitment before comparing outcomes. This closes
+the complete upstream interpreter differential for the pinned revision. It is
+not a substitute for full-mainnet block/state replay or independently sourced
+invalid corpora at the surrounding contextual boundaries.
 
 ## HSRD active-state body scheduling qualification update
 

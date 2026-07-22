@@ -380,6 +380,7 @@ function createFullScriptExecutionFixture(hsdSource) {
       previousValue: item.value,
       addressVersion: address.version,
       addressHash: address.hash.toString('hex'),
+      sigops: script.getSigops(),
       flags: item.flags,
       result
     };

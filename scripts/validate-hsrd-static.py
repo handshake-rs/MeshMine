@@ -525,6 +525,23 @@ def validate_consensus_boundaries() -> None:
         "script authorization",
     )
 
+    full_script_verifier = read_text(
+        ROOT
+        / "hsrd/crates/hns-consensus/examples/verify_hsd_script_corpus.rs"
+    )
+    require_tokens(
+        full_script_verifier,
+        (
+            "const HSD_SCRIPT_CASES: usize = 876",
+            "oracle.revision != HSD_REVISION",
+            "address does not commit to its HSD witness script",
+            "count_script_sigops(&script)",
+            "full_corpus_rejects_unpinned_oracle_metadata",
+            "full_corpus_requires_the_exact_pinned_case_count",
+        ),
+        "complete HSD script corpus verifier",
+    )
+
     deployment_source = read_text(
         ROOT / "hsrd/crates/hns-consensus/src/deployment.rs"
     )

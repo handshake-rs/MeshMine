@@ -383,6 +383,7 @@ def validate_schema_coordination() -> None:
             "authority_can_mine_with_readiness",
             "best header and active-state tip are not synchronized",
             "mainnet_canary_requires_explicit_hardened_config_and_complete_readiness",
+            "native_functional_readiness_leaves_only_external_qualification_gates",
         ),
         "best-chain activation",
     )

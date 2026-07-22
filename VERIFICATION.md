@@ -10,7 +10,7 @@ Environment: `aarch64`, Rust/Cargo 1.89.0, Node.js 24.13.0, and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 338 all-feature tests, 332 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 340 all-feature tests, 333 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -137,6 +137,37 @@ This extends the bounded early-history and restart qualification through height
 timer-safe frame continuation. It still is not complete checkpoint-range
 historical replay, sustained reorganization/pruning evidence, or authority
 qualification.
+
+### Restart-durable out-of-order canonical bodies
+
+The same 2026-07-22 replay exposed a restart gap in body retention: a validated
+canonical body whose lower parent body had not arrived was held only in the
+volatile orphan pool. An IDE restart or power loss therefore discarded most of
+the bounded 1,024-body download window even though the storage model already
+supported non-active bodies.
+
+Canonical shadow imports now recheck that the body hash is the durable
+best-header-path hash at its claimed height, perform strict body/header and
+header-ancestry validation, and atomically store the non-active body/index even
+when the parent body is absent. Ordinary block acceptance, active-state
+connection, and reorganization retain the complete parent body/index
+requirement. Non-canonical descendants remain in the bounded in-memory orphan
+pool. The contiguous stored tip stays at the first gap, so its bounded download
+window advances only after the missing body arrives.
+
+With the optimized binary and the preserved WAL store, the first live sample
+advanced active/stored state from 6,644/6,644 to 6,759/6,763 in under one minute,
+durably stored 145 bodies, connected 115 blocks, and reported zero orphans,
+evictions, scheduler failures, unavailable bodies, stored/contextual failures,
+or runtime errors across eight peers. After a clean stop and reopen, retained
+future bodies immediately helped advance both tips to 6,815 and then 6,856; the
+restarted runtime durably stored 76 new bodies and connected 59 blocks with the
+same zero-error counters. Its best-header/target height 339,301 matched the
+local pinned-source HSD 8.99.0 oracle.
+
+This qualifies restart persistence and gap recovery for bounded early-mainnet
+canonical body scheduling. It is not complete historical replay, sustained
+reorganization/pruning evidence, or authority qualification.
 
 ## HSRD transaction-bearing name-root qualification update
 

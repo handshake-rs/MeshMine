@@ -18,7 +18,7 @@ use meshmine_core_link::{
 use meshmine_crypto::verify_object;
 use meshmine_parent_oracle::{
     LiveParentOracle, LiveParentPolicy, MAX_PARENT_AUTHORIZATION_BYTES,
-    MAX_PARENT_RPC_RESPONSE_BYTES, ParentRpcSource, ParentSourceKind,
+    MAX_PARENT_RPC_RESPONSE_BYTES, ParentRpcSource,
 };
 use meshmine_storage::{DurableStore, RedbStore, ScanLimits};
 use meshmine_types::{ED25519_SUITE, UnsignedObject};
@@ -58,12 +58,9 @@ struct ParentOracleFile {
     network_id: u8,
     minimum_confirmations: u32,
     maximum_certificate_depth: u32,
-    maximum_tip_lag_blocks: u32,
     maximum_header_age_ms: u64,
     cache_ttl_ms: u64,
-    require_hsrd_match: bool,
-    hsd: ParentRpcSourceFile,
-    hsrd: Option<ParentRpcSourceFile>,
+    hsrd: ParentRpcSourceFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,7 +69,7 @@ struct ParentRpcSourceFile {
     label: String,
     address: String,
     path: String,
-    authorization_header_file: Option<PathBuf>,
+    authorization_header_file: PathBuf,
     connect_timeout_ms: u64,
     read_timeout_ms: u64,
     write_timeout_ms: u64,
@@ -513,57 +510,38 @@ fn load_parent_oracle(config: &CoreConfig) -> Result<LiveParentOracle, Box<dyn E
         false,
         "parent oracle configuration",
     )?)?;
-    if file.schema_version != 1 || file.network_id != config.network_id {
+    if file.schema_version != 2 || file.network_id != config.network_id {
         return Err("parent oracle schema or network mismatch".into());
     }
     let policy = LiveParentPolicy {
         network_id: file.network_id,
         minimum_confirmations: file.minimum_confirmations,
         maximum_certificate_depth: file.maximum_certificate_depth,
-        maximum_tip_lag_blocks: file.maximum_tip_lag_blocks,
         maximum_header_age: Duration::from_millis(file.maximum_header_age_ms),
         cache_ttl: Duration::from_millis(file.cache_ttl_ms),
-        require_hsrd_match: file.require_hsrd_match,
     };
-    let hsd = build_parent_source(file.hsd, ParentSourceKind::Hsd)?;
-    let hsrd = file
-        .hsrd
-        .map(|source| build_parent_source(source, ParentSourceKind::Hsrd))
-        .transpose()?;
-    Ok(LiveParentOracle::new(policy, hsd, hsrd)?)
+    let hsrd = build_parent_source(file.hsrd)?;
+    Ok(LiveParentOracle::new(policy, hsrd)?)
 }
 
-fn build_parent_source(
-    source: ParentRpcSourceFile,
-    kind: ParentSourceKind,
-) -> Result<ParentRpcSource, Box<dyn Error>> {
+fn build_parent_source(source: ParentRpcSourceFile) -> Result<ParentRpcSource, Box<dyn Error>> {
     let address: SocketAddr = source.address.parse()?;
-    let authorization_header = source
-        .authorization_header_file
-        .as_ref()
-        .map(|path| {
-            let bytes = read_secure_file(
-                path,
-                MAX_PARENT_AUTHORIZATION_BYTES as u64,
-                true,
-                "parent RPC authorization header",
-            )?;
-            let header = String::from_utf8(bytes)?.trim().to_owned();
-            if header.is_empty()
-                || header
-                    .chars()
-                    .any(|character| matches!(character, '\r' | '\n'))
-            {
-                return Err::<String, Box<dyn Error>>(
-                    "parent RPC authorization header must be one nonempty line".into(),
-                );
-            }
-            Ok(header)
-        })
-        .transpose()?;
+    let bytes = read_secure_file(
+        &source.authorization_header_file,
+        MAX_PARENT_AUTHORIZATION_BYTES as u64,
+        true,
+        "hsrd RPC authorization header",
+    )?;
+    let authorization_header = String::from_utf8(bytes)?.trim().to_owned();
+    if authorization_header.is_empty()
+        || authorization_header
+            .chars()
+            .any(|character| matches!(character, '\r' | '\n'))
+    {
+        return Err("hsrd RPC authorization header must be one nonempty line".into());
+    }
     let runtime = ParentRpcSource {
         label: source.label,
-        kind,
         address,
         path: source.path,
         authorization_header,

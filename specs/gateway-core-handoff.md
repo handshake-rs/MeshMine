@@ -6,8 +6,8 @@ fail-closed durable assignment-to-`hsrd` binding, and the authenticated
 continuous local Core/operator path. The integrated path includes Linux peer credentials,
 pinned Ed25519 mutual authentication, exact signed assignment bundles,
 automatic exact `ShareV2` construction, durable terminal receipt reconciliation,
-signed assignment drain/transition orchestration, bounded live HSD parent
-qualification, optional/required HSRD shadow agreement, reconnect/fallback
+signed assignment drain/transition orchestration, bounded authenticated native
+`hsrd` parent qualification, reconnect/fallback
 supervision, the read-only dashboard, and graceful shutdown. Production context
 distribution and physical ASIC evidence remain release gates.
 
@@ -123,9 +123,11 @@ The unified operator composes the continuous local process boundary and its pare
   atomically replaces a pending envelope with its terminal receipt.
 
 This is a local pre-production boundary. The Core daemon now checks the exact
-parent against a bounded loopback HSD active-chain RPC source and can require an
-HSRD shadow source to agree on hash, height, time, and chainwork. HSRD cannot
-grant authority by itself. The operator composes the Core link with the local
+parent against a mandatory authenticated loopback `hsrd` source. One atomic
+RPC snapshot must report complete native consensus readiness, an authoritative
+durable active tip, no pending better-chain activation, and matching hash,
+height, time, and chainwork. HSD is not invoked by this runtime path. The
+operator composes the Core link with the local
 supervisor, fallback hysteresis, dashboard, event journal, reconnect backoff,
 and bounded shutdown drain.
 
@@ -133,7 +135,7 @@ and bounded shutdown drain.
 
 The following remain mandatory:
 
-- compile and fault-test HSD/HSRD disagreement, RPC loss, reconnect, dashboard,
+- compile and fault-test hsrd authentication/readiness loss, RPC loss, reconnect, dashboard,
   fallback, and assignment-drain behavior without weakening the signed
   boundary;
 - atomically compose the implemented durable `hsrd`

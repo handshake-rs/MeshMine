@@ -10,13 +10,28 @@ root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
 files = {
     'crates/meshmine-parent-oracle/src/lib.rs': [
         'LiveParentOracle', 'ParentRpcSource', 'LiveParentPolicy',
-        'verify_header_and_chainwork', 'getblockchaininfo', 'getblockheader',
+        'verify_header_and_chainwork', 'getparentauthority',
         'confirmations', 'maximum_certificate_depth', 'maximum_header_age',
-        'require_hsrd_match', 'is_loopback', 'connect_timeout',
+        'rpc_authentication_required', 'consensus_complete',
+        'can_authorize_mining_templates', 'is_loopback', 'connect_timeout',
         'Content-Length', 'transfer-encoding', 'Noncanonical',
-        'ShadowDisagreement', 'qualify_active',
-        'live_hsd_active_tip_qualification_passes',
+        'AuthorityUnavailable', 'qualify_active',
+        'authenticated_native_hsrd_active_tip_qualification_passes',
         'active_tip_qualification_rejects_a_deep_canonical_parent',
+    ],
+    'hsrd/crates/hns-node/src/lib.rs': [
+        'RpcAuthorizationHeader', 'serve_rpc_listener_with_authorization',
+        'require_rpc_authorization', 'rpc_authentication_required',
+        'rpc_authorization_rejects_missing_and_wrong_values',
+    ],
+    'hsrd/crates/hns-node/src/shadow_sync.rs': [
+        'parent_authority_value', 'getparentauthority',
+        'best_block_tip_from_snapshot', 'read_canonical_hash',
+        'parent_authority_fast_path_is_coherent_and_fail_closed',
+    ],
+    'hsrd/crates/hns-rpc/src/lib.rs': [
+        'GetParentAuthority', 'getparentauthority',
+        'parent_authority_is_one_coherent_snapshot',
     ],
     'bins/meshmine-cored/src/main.rs': [
         'parent_oracle_file', 'load_parent_oracle', 'ensure_active_parent',
@@ -58,6 +73,7 @@ parent = (root / 'crates/meshmine-parent-oracle/src/lib.rs').read_text()
 for forbidden in (
     '0.0.0.0', '[::]:', 'reqwest', 'hyper', 'ureq', 'danger_accept_invalid',
     'request.push_str("Transfer-Encoding', 'qualified: result.is_ok()',
+    'ParentSourceKind', 'require_hsrd_match', 'ShadowDisagreement',
 ):
     if forbidden in parent:
         raise SystemExit(f'forbidden parent-oracle shortcut found: {forbidden}')
@@ -77,19 +93,25 @@ if core_config.get('schema_version') != 2 or core_config.get('production') is no
     raise SystemExit('Core example must be schema 2 and pre-production')
 if operator_config.get('schema_version') != 2 or operator_config.get('production') is not False:
     raise SystemExit('operator example must be schema 2 and pre-production')
-if parent_config.get('schema_version') != 1:
-    raise SystemExit('parent-oracle example must use schema 1')
+if parent_config.get('schema_version') != 2:
+    raise SystemExit('parent-oracle example must use schema 2')
 if 'parent_oracle_file' not in core_config or 'parent_allowlist_file' in core_config:
     raise SystemExit('Core example does not use the live parent-oracle file')
 for listener in ('gateway_listen', 'dashboard_listen'):
     value = operator_config.get(listener, '')
     if not (value.startswith('127.0.0.1:') or value.startswith('[::1]:')):
         raise SystemExit(f'{listener} must be loopback in the example')
-for source_name in ('hsd',):
-    source = parent_config.get(source_name, {})
-    address = source.get('address', '')
-    if not (address.startswith('127.0.0.1:') or address.startswith('[::1]:')):
-        raise SystemExit(f'{source_name} RPC source must be loopback')
+if 'hsd' in parent_config or set(parent_config).intersection(
+    {'require_hsrd_match', 'maximum_tip_lag_blocks'}
+):
+    raise SystemExit('parent-oracle example retains a runtime HSD/shadow field')
+source = parent_config.get('hsrd', {})
+address = source.get('address', '')
+if not (address.startswith('127.0.0.1:') or address.startswith('[::1]:')):
+    raise SystemExit('hsrd RPC source must be loopback')
+authorization_file = source.get('authorization_header_file')
+if not isinstance(authorization_file, str) or not authorization_file.startswith('/'):
+    raise SystemExit('hsrd RPC source requires an absolute authorization-header file')
 
 workspace = tomllib.loads((root / 'Cargo.toml').read_text())['workspace']['members']
 if 'crates/meshmine-parent-oracle' not in workspace:

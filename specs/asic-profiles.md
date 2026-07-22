@@ -94,8 +94,8 @@ operator path: it exchanges exact signed assignment bundles and captures with
 `meshmine-cored` over a private Unix-domain connection authenticated by Linux
 peer credentials and pinned Ed25519 identities; Core constructs exact `ShareV2`
 objects and returns durable signed terminal receipts. The Core daemon performs
-bounded live loopback HSD parent qualification with optional or required HSRD
-shadow agreement, while the operator composes concurrent sessions, reconnect
+bounded authenticated loopback native-`hsrd` parent qualification with no HSD
+runtime dependency, while the operator composes concurrent sessions, reconnect
 backoff, fallback hysteresis, assignment draining, the event journal, the
 read-only dashboard, and graceful shutdown. Physical hardware qualification is
 still absent, so the complete path remains pre-production.

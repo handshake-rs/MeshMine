@@ -4,17 +4,16 @@ Status: source-complete pre-production handoff. Native mainnet authority remains
 
 ## Purpose
 
-The private Core/operator transport replaces the
-research parent-certificate allowlist with bounded live qualification against a
-local HSD node. An optional local HSRD node can act as an independently
-implemented shadow witness. The Core-link operator is now composed with the
+The private Core/operator transport replaces the research parent-certificate
+allowlist and former runtime HSD dependency with bounded live qualification
+against one authenticated local `hsrd` node. The Core-link operator is composed with the
 continuous supervisor, fallback behavior, event journal, graceful shutdown, and
 read-only dashboard.
 
 ```text
-local HSD authority ----+
-                        | exact parent hash/height/time/chainwork
-optional HSRD shadow ---+----> meshmine-cored
+authenticated native hsrd
+    | one coherent authority/tip/header snapshot
+    +--------------------------> meshmine-cored
                                      |
                                      | private Unix-domain Core link
                                      | SO_PEERCRED + pinned Ed25519 identities
@@ -35,7 +34,19 @@ mining authority.
 `meshmine-parent-oracle` implements `ParentChainOracle` through bounded local
 JSON-RPC calls.
 
-The authoritative HSD source has two deliberately separate qualification modes.
+The authoritative `hsrd` source has two deliberately separate qualification modes.
+Every check first calls the hsrd-specific `getparentauthority` method, which
+returns authority, active tip, requested header, and durable validation status
+from one immutable node snapshot. Core requires all of the following before it
+examines the certificate:
+
+- the RPC listener reports that Authorization enforcement is enabled;
+- the diagnostic API supports the atomic authority method;
+- authority mode is exactly `native` and consensus readiness is complete;
+- template and candidate authorization are both enabled with no blockers;
+- the durable mining tip is authoritative and no better-chain activation is pending;
+- every consensus, state-connection, undo, and active-chain validation bit is
+  set and the failed bit is clear.
 
 For historical capture admission it must confirm:
 
@@ -47,7 +58,7 @@ For historical capture admission it must confirm:
 - the configured maximum wall-clock age.
 
 For staging, offering, or continuing an actively served mining assignment it
-adds a stricter requirement: the certified parent must be HSD's current best
+adds a stricter requirement: the certified parent must be `hsrd`'s current best
 block at exactly one confirmation. A bounded canonical ancestor may therefore
 remain usable to classify a delayed capture, but it cannot continue authorizing
 new ASIC work. Active-tip and canonical-depth results use separate cache keys.
@@ -56,23 +67,19 @@ A successful result may be cached only for the configured short TTL. Failed
 results are not cached as a different generic error and are checked again on
 the next request.
 
-The optional HSRD shadow source must match the HSD-observed parent hash, height,
-time, and chainwork, report that header on its active chain, and remain within
-the configured block/header-tip lag. For an active assignment it must also
-report that exact parent as its own current best block.
-When `require_hsrd_match` is true, HSRD failure or disagreement rejects the
-parent. When it is false, HSD remains authoritative and HSRD failure is exposed
-as an advisory diagnostic rather than silently treated as agreement.
-
-HSRD never grants authority. It can only add a required or optional
-implementation-diverse witness to the local HSD qualification.
+There is no fallback or optional witness. RPC loss, malformed or unauthenticated
+responses, incomplete readiness, staged state, and certificate mismatch all
+reject the parent. HSD remains available only as a pinned offline fixture and
+differential-test oracle; neither Core nor the operator invokes it at runtime.
 
 ### RPC boundary
 
-Parent RPC sources are deliberately constrained:
+The sole hsrd RPC source is deliberately constrained:
 
 - explicit loopback socket addresses only;
 - HTTP/1.0 or HTTP/1.1 POST only;
+- a mandatory Authorization value loaded independently by both daemons from a
+  mode-private file;
 - bounded request path and authorization header;
 - bounded connect, read, and write timeouts;
 - bounded response and header sizes;
@@ -81,9 +88,11 @@ Parent RPC sources are deliberately constrained:
 - no chunked or other transfer encoding;
 - no redirects, proxies, TLS bypasses, or public listeners.
 
-The optional authorization-header file contains the complete header value, for
-example `Basic ...`. It must be an absolute, nonsymlink, bounded, user-owned
-private file. The value is never written to diagnostics.
+The authorization-header file contains the complete header value, for example
+`Bearer ...`. Core requires an absolute, nonsymlink, bounded, user-owned private
+file. `hsrd` opens an absolute nonsymlink private file and applies that exact
+value to every JSON-RPC and diagnostic route. The value is redacted from Debug
+output and never written to diagnostics.
 
 ## Qualification points
 
@@ -202,10 +211,11 @@ separately.
 ## Deliberate limitations
 
 - Both daemons reject `production: true`.
-- HSD is still the authoritative local parent source.
-- HSRD remains pre-authority and may only serve as a shadow witness.
-- HSD RPC transport is local plaintext HTTP; public or remote deployment is not
-  part of this profile.
+- HSD has no runtime role in this path.
+- `hsrd` remains pre-authority, so its current incomplete readiness response
+  deliberately makes Core reject all authority-bearing work.
+- The authenticated hsrd RPC transport is local HTTP; public or remote
+  deployment is not part of this profile.
 - The Core server accepts one authenticated operator connection at a time.
 - Physical ASIC job-switch, stale-work, reconnect, and fallback behavior remain
   unqualified.

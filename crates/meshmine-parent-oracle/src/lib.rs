@@ -1,10 +1,10 @@
 //! Live local HNS parent qualification for MeshMine Core.
 //!
-//! The oracle deliberately supports only bounded loopback JSON-RPC sources.
-//! One HSD source is authoritative for active-chain membership. An optional
-//! HSRD source can be required as an independently implemented shadow witness.
-//! Failure, disagreement, stale observations, malformed responses, and source
-//! network mismatches all fail closed.
+//! The oracle deliberately supports one bounded, authenticated, loopback hsrd
+//! JSON-RPC source. It consumes one immutable `getparentauthority` snapshot so
+//! authority, active-tip membership, validation status, and header fields
+//! cannot be assembled across a tip transition. HSD is an offline fixture
+//! oracle only and has no runtime role here.
 
 #![forbid(unsafe_code)]
 
@@ -23,27 +23,36 @@ use thiserror::Error;
 pub const MAX_PARENT_RPC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_PARENT_RPC_PATH_BYTES: usize = 512;
 pub const MAX_PARENT_AUTHORIZATION_BYTES: usize = 4096;
+pub const MIN_HSRD_PARENT_AUTHORITY_API_VERSION: u32 = 9;
 const MAX_HTTP_HEADER_BYTES: usize = 64 * 1024;
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ParentSourceKind {
-    Hsd,
-    Hsrd,
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ParentRpcSource {
     pub label: String,
-    pub kind: ParentSourceKind,
     pub address: SocketAddr,
     pub path: String,
-    pub authorization_header: Option<String>,
+    pub authorization_header: String,
     pub connect_timeout: Duration,
     pub read_timeout: Duration,
     pub write_timeout: Duration,
     pub maximum_response_bytes: usize,
+}
+
+impl std::fmt::Debug for ParentRpcSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ParentRpcSource")
+            .field("label", &self.label)
+            .field("address", &self.address)
+            .field("path", &self.path)
+            .field("authorization_header", &"[REDACTED]")
+            .field("connect_timeout", &self.connect_timeout)
+            .field("read_timeout", &self.read_timeout)
+            .field("write_timeout", &self.write_timeout)
+            .field("maximum_response_bytes", &self.maximum_response_bytes)
+            .finish()
+    }
 }
 
 impl ParentRpcSource {
@@ -63,13 +72,12 @@ impl ParentRpcSource {
             || self.write_timeout.is_zero()
             || self.maximum_response_bytes == 0
             || self.maximum_response_bytes > MAX_PARENT_RPC_RESPONSE_BYTES
-            || self.authorization_header.as_ref().is_some_and(|header| {
-                header.is_empty()
-                    || header.len() > MAX_PARENT_AUTHORIZATION_BYTES
-                    || header
-                        .chars()
-                        .any(|character| matches!(character, '\r' | '\n'))
-            })
+            || self.authorization_header.is_empty()
+            || self.authorization_header.len() > MAX_PARENT_AUTHORIZATION_BYTES
+            || self
+                .authorization_header
+                .chars()
+                .any(|character| matches!(character, '\r' | '\n'))
         {
             return Err(ParentOracleError::InvalidConfiguration);
         }
@@ -82,10 +90,8 @@ pub struct LiveParentPolicy {
     pub network_id: u8,
     pub minimum_confirmations: u32,
     pub maximum_certificate_depth: u32,
-    pub maximum_tip_lag_blocks: u32,
     pub maximum_header_age: Duration,
     pub cache_ttl: Duration,
-    pub require_hsrd_match: bool,
 }
 
 impl LiveParentPolicy {
@@ -93,7 +99,6 @@ impl LiveParentPolicy {
         if self.network_id > 3
             || self.minimum_confirmations == 0
             || self.maximum_certificate_depth.saturating_add(1) < self.minimum_confirmations
-            || self.maximum_tip_lag_blocks > 100_000
             || self.maximum_header_age.is_zero()
             || self.cache_ttl > Duration::from_secs(60)
         {
@@ -114,10 +119,75 @@ pub struct ParentHeaderView {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParentChainView {
-    pub chain: String,
     pub blocks: u32,
     pub headers: u32,
+    #[serde(rename = "bestblockhash")]
     pub best_block_hash: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParentAuthorityView {
+    pub mode: String,
+    pub consensus_complete: bool,
+    pub can_authorize_mining_templates: bool,
+    pub can_accept_mining_candidates: bool,
+    pub blockers: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParentTipValidationView {
+    pub header_context_valid: bool,
+    pub checkpoint_valid: bool,
+    pub deployment_state_valid: bool,
+    pub body_present: bool,
+    pub body_syntax_valid: bool,
+    pub absolute_finality_valid: bool,
+    pub relative_locks_valid: bool,
+    pub scripts_valid: bool,
+    pub covenant_links_valid: bool,
+    pub covenants_context_valid: bool,
+    pub claims_and_airdrops_valid: bool,
+    pub utxo_connected: bool,
+    pub name_state_connected: bool,
+    pub tree_root_valid: bool,
+    pub undo_present: bool,
+    pub active_chain: bool,
+    pub failed: bool,
+}
+
+impl ParentTipValidationView {
+    fn is_mining_authoritative(&self) -> bool {
+        self.header_context_valid
+            && self.checkpoint_valid
+            && self.deployment_state_valid
+            && self.body_present
+            && self.body_syntax_valid
+            && self.absolute_finality_valid
+            && self.relative_locks_valid
+            && self.scripts_valid
+            && self.covenant_links_valid
+            && self.covenants_context_valid
+            && self.claims_and_airdrops_valid
+            && self.utxo_connected
+            && self.name_state_connected
+            && self.tree_root_valid
+            && self.undo_present
+            && self.active_chain
+            && !self.failed
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ParentAuthoritySnapshot {
+    api_version: u32,
+    network: String,
+    rpc_authentication_required: bool,
+    chain: ParentChainView,
+    header: ParentHeaderView,
+    authority: ParentAuthorityView,
+    authoritative_mining_tip: bool,
+    pending_best_chain_activation: bool,
+    tip_validation: Option<ParentTipValidationView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,10 +199,9 @@ pub struct ParentQualificationStatus {
     pub parent_hash: String,
     pub parent_height: u32,
     pub authoritative_source: String,
-    pub shadow_source: Option<String>,
     pub reason: String,
-    pub hsd: Option<ParentHeaderView>,
     pub hsrd: Option<ParentHeaderView>,
+    pub hsrd_authority: Option<ParentAuthorityView>,
 }
 
 impl ParentQualificationStatus {
@@ -145,10 +214,9 @@ impl ParentQualificationStatus {
             parent_hash: String::new(),
             parent_height: 0,
             authoritative_source: String::new(),
-            shadow_source: None,
             reason: "not checked".to_owned(),
-            hsd: None,
             hsrd: None,
+            hsrd_authority: None,
         }
     }
 }
@@ -177,8 +245,8 @@ pub enum ParentOracleError {
     Depth,
     #[error("parent header is older than the configured freshness policy")]
     Stale,
-    #[error("HSRD shadow source does not agree with HSD")]
-    ShadowDisagreement,
+    #[error("hsrd is not currently a complete native consensus authority")]
+    AuthorityUnavailable,
     #[error("system clock is unavailable")]
     Clock,
 }
@@ -193,35 +261,17 @@ struct CachedQualification {
 
 pub struct LiveParentOracle {
     policy: LiveParentPolicy,
-    hsd: ParentRpcSource,
-    hsrd: Option<ParentRpcSource>,
+    hsrd: ParentRpcSource,
     cache: Mutex<Option<CachedQualification>>,
     status: Mutex<ParentQualificationStatus>,
 }
 
 impl LiveParentOracle {
-    pub fn new(
-        policy: LiveParentPolicy,
-        hsd: ParentRpcSource,
-        hsrd: Option<ParentRpcSource>,
-    ) -> Result<Self, ParentOracleError> {
+    pub fn new(policy: LiveParentPolicy, hsrd: ParentRpcSource) -> Result<Self, ParentOracleError> {
         policy.validate()?;
-        hsd.validate()?;
-        if hsd.kind != ParentSourceKind::Hsd {
-            return Err(ParentOracleError::InvalidConfiguration);
-        }
-        if let Some(source) = hsrd.as_ref() {
-            source.validate()?;
-            if source.kind != ParentSourceKind::Hsrd {
-                return Err(ParentOracleError::InvalidConfiguration);
-            }
-        }
-        if policy.require_hsrd_match && hsrd.is_none() {
-            return Err(ParentOracleError::InvalidConfiguration);
-        }
+        hsrd.validate()?;
         Ok(Self {
             policy,
-            hsd,
             hsrd,
             cache: Mutex::new(None),
             status: Mutex::new(ParentQualificationStatus::initial()),
@@ -282,11 +332,10 @@ impl LiveParentOracle {
                 certificate_id: hex::encode(certificate_id),
                 parent_hash: hex::encode(certificate.parent_hash),
                 parent_height: certificate.parent_height,
-                authoritative_source: self.hsd.label.clone(),
-                shadow_source: self.hsrd.as_ref().map(|source| source.label.clone()),
+                authoritative_source: self.hsrd.label.clone(),
                 reason: error.to_string(),
-                hsd: None,
                 hsrd: None,
+                hsrd_authority: None,
             },
         };
         if let Ok(mut current) = self.status.lock() {
@@ -318,62 +367,41 @@ impl LiveParentOracle {
         if certificate.network_id != self.policy.network_id {
             return Err(ParentOracleError::Network);
         }
-        let expected_chain = expected_chain_name(self.policy.network_id, ParentSourceKind::Hsd)?;
-        let hsd_chain = fetch_chain_info(&self.hsd)?;
-        if hsd_chain.chain != expected_chain {
+        let snapshot = fetch_parent_authority(&self.hsrd, certificate.parent_hash)?;
+        if snapshot.api_version < MIN_HSRD_PARENT_AUTHORITY_API_VERSION {
+            return Err(ParentOracleError::AuthorityUnavailable);
+        }
+        if snapshot.network != expected_chain_name(self.policy.network_id)? {
             return Err(ParentOracleError::Network);
         }
-        let hsd_header = fetch_header(&self.hsd, certificate.parent_hash)?;
+        if !snapshot.rpc_authentication_required
+            || snapshot.authority.mode != "native"
+            || !snapshot.authority.consensus_complete
+            || !snapshot.authority.can_authorize_mining_templates
+            || !snapshot.authority.can_accept_mining_candidates
+            || !snapshot.authority.blockers.is_empty()
+            || !snapshot.authoritative_mining_tip
+            || snapshot.pending_best_chain_activation
+            || !snapshot
+                .tip_validation
+                .as_ref()
+                .is_some_and(ParentTipValidationView::is_mining_authoritative)
+        {
+            return Err(ParentOracleError::AuthorityUnavailable);
+        }
         validate_authoritative_header(
             &self.policy,
             certificate,
-            &hsd_chain,
-            &hsd_header,
+            &snapshot.chain,
+            &snapshot.header,
             now_ms,
             tip_required,
         )?;
-
-        let mut hsrd_header = None;
-        let mut shadow_note = None::<String>;
-        if let Some(source) = self.hsrd.as_ref() {
-            let shadow_result = (|| -> Result<ParentHeaderView, ParentOracleError> {
-                let expected = expected_chain_name(self.policy.network_id, ParentSourceKind::Hsrd)?;
-                let chain = fetch_chain_info(source)?;
-                if chain.chain != expected {
-                    return Err(ParentOracleError::Network);
-                }
-                let block_lag = hsd_chain.blocks.saturating_sub(chain.blocks);
-                let header_lag = hsd_chain.headers.saturating_sub(chain.headers);
-                if block_lag.max(header_lag) > self.policy.maximum_tip_lag_blocks {
-                    return Err(ParentOracleError::ShadowDisagreement);
-                }
-                let header = fetch_header(source, certificate.parent_hash)?;
-                validate_shadow_header(certificate, &hsd_header, &chain, &header, tip_required)?;
-                Ok(header)
-            })();
-            match shadow_result {
-                Ok(header) => hsrd_header = Some(header),
-                Err(error) if self.policy.require_hsrd_match => return Err(error),
-                Err(error) => shadow_note = Some(error.to_string()),
-            }
-        }
-        if self.policy.require_hsrd_match && hsrd_header.is_none() {
-            return Err(ParentOracleError::ShadowDisagreement);
-        }
 
         let scope = if tip_required {
             "active-tip"
         } else {
             "canonical-depth"
-        };
-        let reason = match shadow_note {
-            Some(note) => format!(
-                "live HSD {scope} qualification passed; optional HSRD witness unavailable: {note}"
-            ),
-            None if hsrd_header.is_some() => {
-                format!("live HSD {scope} qualification and HSRD shadow agreement passed")
-            }
-            None => format!("live HSD {scope} qualification passed"),
         };
         Ok(ParentQualificationStatus {
             checked_at_ms: now_ms,
@@ -382,11 +410,12 @@ impl LiveParentOracle {
             certificate_id: hex::encode(certificate.object_id()),
             parent_hash: hex::encode(certificate.parent_hash),
             parent_height: certificate.parent_height,
-            authoritative_source: self.hsd.label.clone(),
-            shadow_source: self.hsrd.as_ref().map(|source| source.label.clone()),
-            reason,
-            hsd: Some(hsd_header),
-            hsrd: hsrd_header,
+            authoritative_source: self.hsrd.label.clone(),
+            reason: format!(
+                "authenticated native hsrd {scope} consensus-authority qualification passed"
+            ),
+            hsrd: Some(snapshot.header),
+            hsrd_authority: Some(snapshot.authority),
         })
     }
 }
@@ -405,7 +434,10 @@ fn validate_authoritative_header(
     now_ms: u64,
     tip_required: bool,
 ) -> Result<(), ParentOracleError> {
-    if header.confirmations <= 0 {
+    if header.confirmations <= 0
+        || chain.headers < chain.blocks
+        || chain.blocks < certificate.parent_height
+    {
         return Err(ParentOracleError::Noncanonical);
     }
     let confirmations =
@@ -434,34 +466,6 @@ fn validate_authoritative_header(
     Ok(())
 }
 
-fn validate_shadow_header(
-    certificate: &SessionParentCertificateV2,
-    authoritative: &ParentHeaderView,
-    chain: &ParentChainView,
-    shadow: &ParentHeaderView,
-    tip_required: bool,
-) -> Result<(), ParentOracleError> {
-    validate_certificate_fields(certificate, shadow)?;
-    if shadow.confirmations <= 0
-        || authoritative.hash != shadow.hash
-        || authoritative.height != shadow.height
-        || authoritative.chainwork != shadow.chainwork
-        || authoritative.time != shadow.time
-    {
-        return Err(ParentOracleError::ShadowDisagreement);
-    }
-    if tip_required
-        && (shadow.confirmations != 1
-            || chain.blocks != certificate.parent_height
-            || !chain
-                .best_block_hash
-                .eq_ignore_ascii_case(&hex::encode(certificate.parent_hash)))
-    {
-        return Err(ParentOracleError::ShadowDisagreement);
-    }
-    Ok(())
-}
-
 fn validate_certificate_fields(
     certificate: &SessionParentCertificateV2,
     header: &ParentHeaderView,
@@ -478,78 +482,22 @@ fn validate_certificate_fields(
     Ok(())
 }
 
-fn fetch_chain_info(source: &ParentRpcSource) -> Result<ParentChainView, ParentOracleError> {
-    let value = rpc_call(source, "getblockchaininfo", json!([]))?;
-    let chain = value
-        .get("chain")
-        .and_then(Value::as_str)
-        .ok_or(ParentOracleError::JsonRpc)?
-        .to_owned();
-    let blocks = value
-        .get("blocks")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .ok_or(ParentOracleError::JsonRpc)?;
-    let headers = value
-        .get("headers")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .ok_or(ParentOracleError::JsonRpc)?;
-    let best_block_hash = value
-        .get("bestblockhash")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    if best_block_hash.len() != 64 || hex::decode(&best_block_hash).is_err() {
-        return Err(ParentOracleError::JsonRpc);
-    }
-    Ok(ParentChainView {
-        chain,
-        blocks,
-        headers,
-        best_block_hash,
-    })
-}
-
-fn fetch_header(
+fn fetch_parent_authority(
     source: &ParentRpcSource,
     hash: [u8; 32],
-) -> Result<ParentHeaderView, ParentOracleError> {
-    let value = rpc_call(source, "getblockheader", json!([hex::encode(hash), true]))?;
-    let header_hash = value
-        .get("hash")
-        .and_then(Value::as_str)
-        .ok_or(ParentOracleError::JsonRpc)?
-        .to_owned();
-    if header_hash.len() != 64 || hex::decode(&header_hash).is_err() {
+) -> Result<ParentAuthoritySnapshot, ParentOracleError> {
+    let value = rpc_call(source, "getparentauthority", json!([hex::encode(hash)]))?;
+    let snapshot = serde_json::from_value::<ParentAuthoritySnapshot>(value)
+        .map_err(|_| ParentOracleError::JsonRpc)?;
+    if snapshot.header.hash.len() != 64
+        || hex::decode(&snapshot.header.hash).is_err()
+        || snapshot.chain.best_block_hash.len() != 64
+        || hex::decode(&snapshot.chain.best_block_hash).is_err()
+    {
         return Err(ParentOracleError::JsonRpc);
     }
-    let height = value
-        .get("height")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .ok_or(ParentOracleError::JsonRpc)?;
-    let chainwork = value
-        .get("chainwork")
-        .and_then(Value::as_str)
-        .ok_or(ParentOracleError::JsonRpc)?
-        .to_owned();
-    let confirmations = value
-        .get("confirmations")
-        .and_then(Value::as_i64)
-        .ok_or(ParentOracleError::JsonRpc)?;
-    let time = value
-        .get("time")
-        .and_then(Value::as_u64)
-        .ok_or(ParentOracleError::JsonRpc)?;
-    normalize_chainwork_hex(&chainwork)?;
-    Ok(ParentHeaderView {
-        hash: header_hash,
-        height,
-        chainwork,
-        confirmations,
-        time,
-    })
+    normalize_chainwork_hex(&snapshot.header.chainwork)?;
+    Ok(snapshot)
 }
 
 fn rpc_call(
@@ -580,11 +528,9 @@ fn rpc_call(
         source.address,
         body.len()
     );
-    if let Some(header) = source.authorization_header.as_ref() {
-        request.push_str("Authorization: ");
-        request.push_str(header);
-        request.push_str("\r\n");
-    }
+    request.push_str("Authorization: ");
+    request.push_str(&source.authorization_header);
+    request.push_str("\r\n");
     request.push_str("\r\n");
     stream
         .write_all(request.as_bytes())
@@ -680,19 +626,12 @@ fn normalize_chainwork_hex(value: &str) -> Result<String, ParentOracleError> {
     Ok(normalized.to_ascii_lowercase())
 }
 
-fn expected_chain_name(
-    network_id: u8,
-    kind: ParentSourceKind,
-) -> Result<&'static str, ParentOracleError> {
-    match (network_id, kind) {
-        (0, ParentSourceKind::Hsd) => Ok("main"),
-        (1, ParentSourceKind::Hsd) => Ok("test"),
-        (2, ParentSourceKind::Hsd) => Ok("regtest"),
-        (3, ParentSourceKind::Hsd) => Ok("simnet"),
-        (0, ParentSourceKind::Hsrd) => Ok("mainnet"),
-        (1, ParentSourceKind::Hsrd) => Ok("testnet"),
-        (2, ParentSourceKind::Hsrd) => Ok("regtest"),
-        (3, ParentSourceKind::Hsrd) => Ok("simnet"),
+fn expected_chain_name(network_id: u8) -> Result<&'static str, ParentOracleError> {
+    match network_id {
+        0 => Ok("mainnet"),
+        1 => Ok("testnet"),
+        2 => Ok("regtest"),
+        3 => Ok("simnet"),
         _ => Err(ParentOracleError::Network),
     }
 }
@@ -729,68 +668,94 @@ mod tests {
         }
     }
 
-    fn spawn_rpc_source(
-        chain_name: &'static str,
-        header_hash: [u8; 32],
-        header_time: u64,
-    ) -> SocketAddr {
-        spawn_rpc_source_view(chain_name, header_hash, header_time, 101, [9; 32], 2)
-    }
-
     fn spawn_rpc_source_view(
-        chain_name: &'static str,
+        network: &'static str,
         header_hash: [u8; 32],
         header_time: u64,
         blocks: u32,
         best_block_hash: [u8; 32],
         confirmations: i64,
+        authoritative: bool,
     ) -> SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         thread::spawn(move || {
-            for _ in 0..2 {
-                let (mut stream, _) = listener.accept().unwrap();
-                let request = read_http_request(&mut stream);
-                let envelope: Value = serde_json::from_slice(&request).unwrap();
-                let id = envelope.get("id").cloned().unwrap();
-                let method = envelope.get("method").and_then(Value::as_str).unwrap();
-                let result = match method {
-                    "getblockchaininfo" => json!({
-                        "chain": chain_name,
-                        "blocks": blocks,
-                        "headers": blocks,
-                        "bestblockhash": hex::encode(best_block_hash),
-                    }),
-                    "getblockheader" => json!({
+            let (mut stream, _) = listener.accept().unwrap();
+            let (headers, request) = read_http_request(&mut stream);
+            assert!(
+                headers
+                    .lines()
+                    .any(|line| { line.eq_ignore_ascii_case("Authorization: Bearer test-secret") })
+            );
+            let envelope: Value = serde_json::from_slice(&request).unwrap();
+            let id = envelope.get("id").cloned().unwrap();
+            assert_eq!(envelope["method"], "getparentauthority");
+            let all_valid = json!({
+                "header_context_valid": true,
+                "checkpoint_valid": true,
+                "deployment_state_valid": true,
+                "body_present": true,
+                "body_syntax_valid": true,
+                "absolute_finality_valid": true,
+                "relative_locks_valid": true,
+                "scripts_valid": true,
+                "covenant_links_valid": true,
+                "covenants_context_valid": true,
+                "claims_and_airdrops_valid": true,
+                "utxo_connected": true,
+                "name_state_connected": true,
+                "tree_root_valid": true,
+                "undo_present": true,
+                "active_chain": true,
+                "failed": false,
+            });
+            let result = json!({
+                "api_version": MIN_HSRD_PARENT_AUTHORITY_API_VERSION,
+                "network": network,
+                "rpc_authentication_required": true,
+                "chain": {
+                    "blocks": blocks,
+                    "headers": blocks,
+                    "bestblockhash": hex::encode(best_block_hash),
+                },
+                "header": {
                         "hash": hex::encode(header_hash),
                         "height": 100,
                         "chainwork": "1",
                         "confirmations": confirmations,
                         "time": header_time,
-                    }),
-                    _ => panic!("unexpected method"),
-                };
-                let body = serde_json::to_vec(&json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": result,
-                    "error": Value::Null,
-                }))
-                .unwrap();
-                write!(
-                    stream,
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    body.len()
-                )
-                .unwrap();
-                stream.write_all(&body).unwrap();
-                stream.flush().unwrap();
-            }
+                },
+                "authority": {
+                    "mode": "native",
+                    "consensus_complete": authoritative,
+                    "can_authorize_mining_templates": authoritative,
+                    "can_accept_mining_candidates": authoritative,
+                    "blockers": if authoritative { json!([]) } else { json!(["historical replay"]) },
+                },
+                "authoritative_mining_tip": authoritative,
+                "pending_best_chain_activation": false,
+                "tip_validation": all_valid,
+            });
+            let body = serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": result,
+                "error": Value::Null,
+            }))
+            .unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(&body).unwrap();
+            stream.flush().unwrap();
         });
         address
     }
 
-    fn read_http_request(stream: &mut TcpStream) -> Vec<u8> {
+    fn read_http_request(stream: &mut TcpStream) -> (String, Vec<u8>) {
         stream
             .set_read_timeout(Some(Duration::from_secs(2)))
             .unwrap();
@@ -804,7 +769,9 @@ mod tests {
                 break position + 4;
             }
         };
-        let headers = std::str::from_utf8(&bytes[..header_end]).unwrap();
+        let headers = std::str::from_utf8(&bytes[..header_end])
+            .unwrap()
+            .to_owned();
         let content_length = headers
             .split("\r\n")
             .find_map(|line| {
@@ -819,16 +786,18 @@ mod tests {
             assert!(read > 0);
             bytes.extend_from_slice(&buffer[..read]);
         }
-        bytes[header_end..header_end + content_length].to_vec()
+        (
+            headers,
+            bytes[header_end..header_end + content_length].to_vec(),
+        )
     }
 
-    fn source(label: &str, kind: ParentSourceKind, address: SocketAddr) -> ParentRpcSource {
+    fn source(label: &str, address: SocketAddr) -> ParentRpcSource {
         ParentRpcSource {
             label: label.to_owned(),
-            kind,
             address,
             path: "/".to_owned(),
-            authorization_header: None,
+            authorization_header: "Bearer test-secret".to_owned(),
             connect_timeout: Duration::from_secs(1),
             read_timeout: Duration::from_secs(2),
             write_timeout: Duration::from_secs(2),
@@ -836,63 +805,61 @@ mod tests {
         }
     }
 
-    fn policy(require_hsrd_match: bool) -> LiveParentPolicy {
+    fn policy() -> LiveParentPolicy {
         LiveParentPolicy {
             network_id: 2,
             minimum_confirmations: 1,
             maximum_certificate_depth: 12,
-            maximum_tip_lag_blocks: 2,
             maximum_header_age: Duration::from_secs(60),
             cache_ttl: Duration::from_secs(1),
-            require_hsrd_match,
         }
     }
 
     #[test]
-    fn live_hsd_canonical_depth_qualification_passes() {
+    fn authenticated_native_hsrd_canonical_depth_qualification_passes() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
         let certificate = test_certificate(now);
-        let hsd = spawn_rpc_source("regtest", certificate.parent_hash, now);
-        let oracle = LiveParentOracle::new(
-            policy(false),
-            source("hsd", ParentSourceKind::Hsd, hsd),
-            None,
-        )
-        .unwrap();
+        let hsrd = spawn_rpc_source_view(
+            "regtest",
+            certificate.parent_hash,
+            now,
+            101,
+            [9; 32],
+            2,
+            true,
+        );
+        let oracle = LiveParentOracle::new(policy(), source("hsrd", hsrd)).unwrap();
         let status = oracle.qualify(&certificate).unwrap();
         assert!(status.qualified);
         assert!(!status.tip_required);
-        assert_eq!(status.hsd.unwrap().confirmations, 2);
+        assert_eq!(status.hsrd.unwrap().confirmations, 2);
+        assert!(status.hsrd_authority.unwrap().consensus_complete);
     }
 
     #[test]
-    fn live_hsd_active_tip_qualification_passes() {
+    fn authenticated_native_hsrd_active_tip_qualification_passes() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
         let certificate = test_certificate(now);
-        let hsd = spawn_rpc_source_view(
+        let hsrd = spawn_rpc_source_view(
             "regtest",
             certificate.parent_hash,
             now,
             certificate.parent_height,
             certificate.parent_hash,
             1,
+            true,
         );
-        let oracle = LiveParentOracle::new(
-            policy(false),
-            source("hsd", ParentSourceKind::Hsd, hsd),
-            None,
-        )
-        .unwrap();
+        let oracle = LiveParentOracle::new(policy(), source("hsrd", hsrd)).unwrap();
         let status = oracle.qualify_active(&certificate).unwrap();
         assert!(status.qualified);
         assert!(status.tip_required);
-        assert_eq!(status.hsd.unwrap().confirmations, 1);
+        assert_eq!(status.hsrd.unwrap().confirmations, 1);
     }
 
     #[test]
@@ -902,13 +869,16 @@ mod tests {
             .unwrap()
             .as_secs();
         let certificate = test_certificate(now);
-        let hsd = spawn_rpc_source("regtest", certificate.parent_hash, now);
-        let oracle = LiveParentOracle::new(
-            policy(false),
-            source("hsd", ParentSourceKind::Hsd, hsd),
-            None,
-        )
-        .unwrap();
+        let hsrd = spawn_rpc_source_view(
+            "regtest",
+            certificate.parent_hash,
+            now,
+            101,
+            [9; 32],
+            2,
+            true,
+        );
+        let oracle = LiveParentOracle::new(policy(), source("hsrd", hsrd)).unwrap();
         assert!(matches!(
             oracle.qualify_active(&certificate),
             Err(ParentOracleError::Noncanonical)
@@ -916,23 +886,25 @@ mod tests {
     }
 
     #[test]
-    fn required_shadow_disagreement_fails_closed() {
+    fn incomplete_hsrd_authority_fails_closed() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
         let certificate = test_certificate(now);
-        let hsd = spawn_rpc_source("regtest", certificate.parent_hash, now);
-        let hsrd = spawn_rpc_source("regtest", [8; 32], now);
-        let oracle = LiveParentOracle::new(
-            policy(true),
-            source("hsd", ParentSourceKind::Hsd, hsd),
-            Some(source("hsrd", ParentSourceKind::Hsrd, hsrd)),
-        )
-        .unwrap();
+        let hsrd = spawn_rpc_source_view(
+            "regtest",
+            certificate.parent_hash,
+            now,
+            101,
+            [9; 32],
+            2,
+            false,
+        );
+        let oracle = LiveParentOracle::new(policy(), source("hsrd", hsrd)).unwrap();
         assert!(matches!(
             oracle.qualify(&certificate),
-            Err(ParentOracleError::CertificateMismatch | ParentOracleError::ShadowDisagreement)
+            Err(ParentOracleError::AuthorityUnavailable)
         ));
         assert!(!oracle.status().qualified);
     }
@@ -948,28 +920,18 @@ mod tests {
     }
 
     #[test]
-    fn policy_requires_an_hsrd_source_when_agreement_is_mandatory() {
-        let policy = LiveParentPolicy {
-            network_id: 2,
-            minimum_confirmations: 1,
-            maximum_certificate_depth: 8,
-            maximum_tip_lag_blocks: 2,
-            maximum_header_age: Duration::from_secs(3600),
-            cache_ttl: Duration::from_secs(1),
-            require_hsrd_match: true,
-        };
-        let source = ParentRpcSource {
-            label: "hsd".to_owned(),
-            kind: ParentSourceKind::Hsd,
+    fn source_requires_an_authorization_header() {
+        let unauthenticated = ParentRpcSource {
+            label: "hsrd".to_owned(),
             address: "127.0.0.1:12037".parse().unwrap(),
             path: "/".to_owned(),
-            authorization_header: None,
+            authorization_header: String::new(),
             connect_timeout: Duration::from_secs(1),
             read_timeout: Duration::from_secs(1),
             write_timeout: Duration::from_secs(1),
             maximum_response_bytes: 1024,
         };
-        assert!(LiveParentOracle::new(policy, source, None).is_err());
+        assert!(LiveParentOracle::new(policy(), unauthenticated).is_err());
     }
 
     #[test]

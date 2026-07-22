@@ -2,21 +2,18 @@
 
 This design closes two research gaps:
 
-1. Static parent-certificate allowlisting is replaced with live local HSD
-   active-chain qualification, strict current-tip authorization for served jobs, and optional HSRD shadow agreement.
+1. Static parent-certificate allowlisting and runtime HSD shadowing are replaced
+   with authenticated native `hsrd` authority, using one coherent authority,
+   tip, validation, and header snapshot plus strict current-tip authorization.
 2. The authenticated Core-link bridge is composed with the continuous operator
    supervisor, fallback policy, dashboard, event journal, and graceful shutdown.
 
 ## Trust hierarchy
 
 ```text
-HSD active chain
-    authoritative local parent membership and chainwork
-    current-tip authority for every actively served mining assignment
-
-HSRD shadow node
-    optional or required implementation-diverse agreement
-    never an independent authority source
+Native hsrd active chain
+    sole authenticated runtime parent membership and chainwork source
+    must prove complete consensus readiness and an authoritative durable tip
 
 MeshMine Core
     validates and signs exact assignment bundles and terminal receipts
@@ -36,11 +33,10 @@ hardware-specific hashing below the assignment boundary.
 
 | Failure | Result |
 |---|---|
-| HSD unreachable | Core refuses staging/offering/admission; link fails closed |
-| HSD parent is no longer the current tip | Core link closes within the bounded requalification interval; operator enters fallback |
-| Required HSRD unavailable | Parent rejected |
-| Optional HSRD unavailable | HSD result may pass; diagnostic records advisory |
-| HSD/HSRD disagreement | Parent rejected when agreement is required; active jobs require both nodes to identify the same tip |
+| hsrd unreachable or authentication fails | Core refuses staging/offering/admission; link fails closed |
+| hsrd readiness or durable authority is incomplete | Parent rejected; no authority-bearing job is served |
+| hsrd parent is no longer the current tip | Core link closes within the bounded requalification interval; operator enters fallback |
+| hsrd reports a pending better-chain activation or invalid tip stage | Parent rejected |
 | Core link unavailable | Durable captures retained; supervised fallback |
 | Replacement drain pending | New work stopped; old captures drained within signed window |
 | Operator shutdown | Fallback, bounded capture drain, durable residual state |
@@ -49,7 +45,7 @@ hardware-specific hashing below the assignment boundary.
 
 The integrated path does not provide:
 
-- native HSRD authority;
+- bypassing incomplete native hsrd authority;
 - public remote Core transport;
 - global device work allocation;
 - a universal CPU/GPU hash engine;

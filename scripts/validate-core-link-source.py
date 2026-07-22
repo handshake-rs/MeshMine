@@ -40,6 +40,7 @@ required = {
     'bins/meshmine-cored/src/main.rs': [
         'stage-bundle', 'LiveParentOracle', 'bind_secure_listener',
         'production=false', 'parent_oracle_file',
+        'hsrd RPC authorization header',
     ],
     'bins/meshmine-corelink-operatord/src/main.rs': [
         'connect_authenticated', 'drain_captures_durably',

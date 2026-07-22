@@ -479,6 +479,7 @@ mod tests {
                 bits: 0x2000_ffff,
             },
             next_tree_root: [5; 32],
+            parent_median_time: 99,
             chainwork: 1_000u64.into(),
         };
         let coinbase = Transaction {

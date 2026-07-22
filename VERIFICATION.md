@@ -10,7 +10,7 @@ Environment: `aarch64`, Rust/Cargo 1.89.0, Node.js 24.13.0, and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 334 all-feature tests, 328 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 338 all-feature tests, 332 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -98,6 +98,45 @@ qualify transaction-bearing historical script execution, the complete
 checkpoint range, sustained reorganizations, or persistent pruning-horizon
 discovery. The fixture and unit differential gates cover those route boundaries
 without converting this partial live replay into an authority claim.
+
+### HSD request batching, timeout, and frame-read continuation
+
+On 2026-07-22, the same schema-14 WAL replay was continued from active height
+6,496 against eight public mainnet peers and the local pinned-source HSD 8.99.0
+oracle. The replay exposed three coupled transport/scheduling differences from
+HSD: hsrd sent one `GETDATA` packet per hash, charged every simultaneously
+expired hash as a separate peer penalty under 20/15-second block/header
+deadlines, and recreated a non-cancellation-safe partial frame read whenever a
+ping timer won `select!`. The first two produced redundant unavailable-action
+bursts and local disconnect churn; the last could consume part of a large block
+payload and then misread its remaining bytes as a frame header.
+
+The corrected runtime batches each poll's selected block hashes into one
+bounded `GETDATA` inventory per peer, atomically rolls back the exact batch when
+outbound queue admission fails without consuming a retry, and immediately
+removes only a transport-stale peer. Queue pressure retains the peer and retries
+cleanly. Header admission has the same rollback behavior. Default header and
+block deadlines now match HSD's 60-second `GETHEADERS` response and 120-second
+block deadlines, and an expired block batch produces one peer disconnect action
+rather than one score increment per hash. A frame read remains pinned across
+ping, idle, and shutdown maintenance branches so timer activity cannot discard
+partially read bytes.
+
+The final optimized replay ran for four minutes, crossing repeated 30-second
+ping ticks and both HSD request deadlines. It held all eight peers with exactly
+eight initial connection attempts and no reconnects, advanced active/stored
+state from 6,614/6,615 to 6,644/6,644, received 1,062 bodies, and connected 39
+blocks during the runtime. The final sample retained exactly 1,024 bounded body
+reservations with zero scheduler failures, unavailable-body counts, orphan
+evictions, stored/contextual failures, rejected messages, or runtime error.
+Best-header/target height 339,299 matched the local HSD oracle's canonical
+height. The runtime then shut down cleanly.
+
+This extends the bounded early-history and restart qualification through height
+6,644 and directly qualifies HSD-shaped request batching, timeout behavior, and
+timer-safe frame continuation. It still is not complete checkpoint-range
+historical replay, sustained reorganization/pruning evidence, or authority
+qualification.
 
 ## HSRD transaction-bearing name-root qualification update
 

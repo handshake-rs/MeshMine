@@ -844,11 +844,18 @@ def validate_shadow_sync() -> None:
         scheduler,
         (
             "retry_validation_failure",
+            "note_block_unavailable",
+            "requeue_tracked_block",
+            "tracked_blocks",
             "local_validation_failure_retries_without_blaming_peer",
             "bad_validation_response_fails_over_and_blames_only_its_peer",
             "permanent_rejection_removes_pending_descendant",
+            "unavailable_block_fails_over_without_blaming_or_reselecting_peer",
+            "unsolicited_notfound_cannot_cancel_another_peers_request",
+            "body_reservation_survives_validation_and_retry_without_capacity_overflow",
+            "late_block_response_is_accepted_during_request_backoff",
         ),
-        "Shadow sync validation retry accounting",
+        "Shadow sync validation, availability, and work-reservation accounting",
     )
 
     shadow_sync = read_text(ROOT / "hsrd/crates/hns-node/src/shadow_sync.rs")
@@ -867,6 +874,8 @@ def validate_shadow_sync() -> None:
             "MIN_SHADOW_SYNC_POLL_INTERVAL",
             "store_validated_alternate",
             "shadow_sync_queue_missing_canonical_bodies",
+            "note_block_unavailable",
+            "requeue_tracked_block",
             "spawn_validation_pipeline",
             "stored_failed_bodies",
             "discard_orphan_descendants",
@@ -874,6 +883,7 @@ def validate_shadow_sync() -> None:
             "connect_stored_active_state",
             "contextual_failed_bodies",
             "body_validator_only_marks_header_committed_invalidity_permanent",
+            "canonical_body_queue_is_bounded_to_orphan_horizon",
             "maximum_header_packet_imports_as_one_durable_batch",
             "shadow_header_slice_validation_is_atomic",
             "canonical_headers_derive_hsd_deployment_and_script_policy",

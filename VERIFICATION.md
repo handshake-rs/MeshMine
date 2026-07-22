@@ -10,7 +10,7 @@ Environment: `aarch64`, Rust/Cargo 1.89.0, Node.js 24.13.0, and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 324 all-feature tests, 318 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-21) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 329 all-feature tests, 323 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-21) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Seven fixture generators, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -55,6 +55,49 @@ and restart recovery. Script *policy* parity does not mean historical script
 execution. It is explicitly not full block-body, script-execution, covenant,
 UTXO, name-state, Urkel-root, undo, reorganization, or active-state IBD replay
 evidence; those gates remain open below.
+
+## HSRD active-state body scheduling qualification update
+
+On 2026-07-21, a bounded early-mainnet active-state replay used the local
+pinned-source `hsd-cli` and native public-peer P2P traffic. The reference HSD
+reported version 8.99.0, mainnet height 339,284, and `prune: true`; its source
+revision remained `698e252ebc7b5c1dd0a9587e342fdd153d020ae4`.
+
+The live run first reproduced two historical-body scheduling defects. Honest
+`notfound` replies from pruned peers were counted as failures and could exhaust
+the pending limit, while body work that had moved into validation or orphan
+retention no longer occupied a scheduler slot. The latter admitted 8,192
+tracked future bodies into a 1,024-block orphan pool and produced 5,116
+deterministic evictions by active height 596.
+
+The corrected scheduler keeps one reservation across pending, inflight,
+validation, and orphan states; limits canonical acquisition to the configured
+orphan-count horizon; treats an assigned peer's `notfound` as separate
+connection-local availability evidence; rejects cross-peer cancellation; and
+accepts a valid response already in transit during post-timeout backoff. A
+follow-up run progressed from active height 684 through at least 869 with
+exactly 1,024 tracked bodies, 1,020 retained future bodies, zero orphan
+evictions, zero failed bodies, zero scheduler failures, and no contextual
+failure.
+
+After clean shutdown, the final optimized binary reopened the same WAL-backed
+store under a new runtime instance at active height 873/stored height 874 and
+resumed network work through active/stored height 912, including 39 newly
+connected blocks. Its first restarted sample again held exactly
+1,024 reservations with zero scheduler failures, unavailable-body miscounts,
+orphan evictions, failed bodies, contextual failures, or runtime error. A later
+remote-peer turnover left the recoverable peer-unavailable supervisor message
+and reconnected automatically while all body/contextual failure counters
+remained zero.
+
+This qualifies bounded reservation accounting, pruning-aware peer failover,
+early historical body retention/import, and active-state restart resumption. It
+is deliberately not full historical replay evidence: the bounded WAN run
+stopped below mainnet transaction-start height 2,016 and therefore does not
+qualify transaction-bearing historical script execution, the complete
+checkpoint range, sustained reorganizations, or persistent pruning-horizon
+discovery. The fixture and unit differential gates cover those route boundaries
+without converting this partial live replay into an authority claim.
 
 ## Audit exceptions
 

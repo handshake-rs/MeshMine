@@ -1142,7 +1142,7 @@ def validate_mining_engine() -> None:
             "mining_engine_rebuild_templates",
             "mining_engine_prepare_cached_job",
             "mining_engine_reconcile_connected_transactions",
-            "mining_engine_clear_mempool_for_chain_transition",
+            "mining_engine_reconcile_chain_transition",
             "mining_engine_stage_publication",
             "mining_engine_retry_pending_publications",
             "mining_engine_locally_accepted_record",

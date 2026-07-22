@@ -4,13 +4,15 @@ This source tree was verified locally on 2026-07-20 from `main` immediately
 before the integration commit.
 
 Environment: `aarch64`, Rust/Cargo 1.89.0, Node.js 24.13.0, and npm 11.6.2.
+The 2026-07-22 HSRD follow-up gates used Rust/Cargo 1.92.0 on the same
+architecture with Node.js 24.13.0 and npm 11.6.2.
 
 ## Results
 
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 342 all-feature tests, 335 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 346 all-feature tests, 339 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -186,6 +188,45 @@ local pinned-source HSD 8.99.0 oracle.
 This qualifies restart persistence and gap recovery for bounded early-mainnet
 canonical body scheduling. It is not complete historical replay, sustained
 reorganization/pruning evidence, or authority qualification.
+
+### Seed-only plaintext peer discovery
+
+On 2026-07-22, the preserved schema-14 WAL replay was restarted with the final
+optimized binary using `--p2p-discovery` and no explicit `--connect` sockets.
+The mainnet HSD seeds resolved 20 unique admissible plaintext endpoints with
+zero DNS failures. Qualification of the first candidate exposed two bootstrap
+ordering defects: seed entries used a later eligibility instant than the
+initial reconnect fill, and socket spawning followed potentially expensive
+historical active-state/body-queue scans. The corrected runtime uses one
+coherent initialization instant, refills eligible discovery slots on every
+poll, and spawns due sockets before local replay work. A separate regression
+also ensures that TCP connection alone cannot reset failure history; only a
+completed VERSION/VERACK Ready handshake does so.
+
+The final seed-only run made eight peers Ready after 11 attempts. Three failed
+discovered endpoints rotated without displacing a healthy slot or populating
+the runtime error. GETADDR/ADDR exchange accepted 668 HSD announcements and
+retained 287 unique addresses within the 4,096-entry configured bound. The
+runtime advanced active and contiguous stored state from height 7,232 to 7,416,
+received 432 bodies, and durably stored and connected 184 blocks. It retained
+exactly 1,024 tracked body reservations with zero failed or unavailable bodies,
+stored-body failures, contextual failures, orphan retention/evictions, rejected
+messages, or `last_error`. Its best-header/target height 339,304 exactly matched
+the local pinned-source HSD 8.99.0 protocol-v3 oracle, which also reported eight
+connections and no errors. The runtime then shut down cleanly.
+
+After the final concurrency cleanup and all Cargo gates, the exact optimized
+artifact reopened the same store again, relearned 287 unique addresses, made
+seven peers Ready with its eighth socket still connecting after eight attempts,
+and resumed active/stored state through height 7,438. Failed/unavailable bodies,
+stored/contextual failures, orphans/evictions, rejected messages, and
+`last_error` all remained zero before another clean shutdown.
+
+This qualifies bounded HSD DNS bootstrap, v3 GETADDR/ADDR learning, failed
+target rotation, connection scheduling ahead of historical scan work, and
+seed-only restart progress over plaintext transport. Address state and peer
+reputation remain process-local; Brontide, durable bans/reputation, and broader
+adversarial network qualification remain release-blocking.
 
 ## HSRD transaction-bearing name-root qualification update
 

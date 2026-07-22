@@ -949,7 +949,7 @@ def validate_shadow_sync() -> None:
             "PersistCheckpoint",
             "observation_only: !shadow_sync_config.connect_active_state",
             "runtime_instance: runtime_instance_id()",
-            '"/api/v1/native-sync"',
+            "/api/v1/native-sync",
             "handle_shadow_sync_diagnostics",
             '"/api/v1/header-deployments"',
             "handle_header_deployments",
@@ -1224,6 +1224,65 @@ def validate_mining_engine() -> None:
     )
 
 
+def validate_native_performance() -> None:
+    sampler_path = ROOT / "scripts/measure-hsrd-native-sync.py"
+    gate_path = ROOT / "hsrd/crates/hns-node/src/bin/hsrd_performance_gate.rs"
+    documentation_path = ROOT / "hsrd/docs/performance.md"
+    for path in (sampler_path, gate_path, documentation_path):
+        if not path.is_file():
+            fail(f"Native performance file is missing: {path.relative_to(ROOT)}")
+
+    sampler = read_text(sampler_path)
+    require_tokens(
+        sampler,
+        (
+            'SCHEMA = 1',
+            "/api/v1/native-sync",
+            '"runtime_instance"',
+            '"interval_rates_per_second"',
+            '"active_stall_intervals"',
+            '"failure_count"',
+            '"unavailable_evidence"',
+            '--allow-remote-hsrd',
+            '--self-test',
+        ),
+        "Native mainnet performance sampler",
+    )
+
+    gate = read_text(gate_path)
+    require_tokens(
+        gate,
+        (
+            "WARMUP_BLOCKS: usize = 10",
+            "MEASURED_BLOCKS: usize = 100",
+            "TIP_TO_JOB_P99_TARGET_MICROS",
+            "CANDIDATE_VALIDATION_P99_TARGET_MICROS",
+            "LOCAL_CONNECT_P99_TARGET_MICROS",
+            "canonical_regtest_genesis",
+            "mining_engine_build_template",
+            "mining_engine_prepare_cached_job",
+            "admit_solution",
+            "NodeBlockImport::from_mining_candidate",
+            'println!("failure_count=0")',
+            'println!("unavailable_evidence=0")',
+        ),
+        "Native mining-path performance gate",
+    )
+
+    documentation = read_text(documentation_path)
+    require_tokens(
+        documentation,
+        (
+            "measure-hsrd-native-sync.py",
+            "hsrd-performance-gate",
+            "47.667 blocks/s",
+            "3,015 us",
+            "not a full-mainnet IBD completion claim",
+        ),
+        "Native performance evidence",
+    )
+
+
 def main() -> None:
     parse_metadata()
     validate_component_naming()
@@ -1234,6 +1293,7 @@ def main() -> None:
     validate_consensus_boundaries()
     validate_shadow_sync()
     validate_mining_engine()
+    validate_native_performance()
     print("hsrd static validation passed")
 
 

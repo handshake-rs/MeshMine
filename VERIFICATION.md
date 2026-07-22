@@ -207,6 +207,31 @@ This proves live public-network Brontide bootstrap and native early-mainnet
 header/body/active-state progress. It is a startup smoke, not full-IBD or
 performance qualification, and does not open the mining authority gate.
 
+### Native synchronization and mining-path performance
+
+On the same 2026-07-22 four-core Cortex-A76 host, the release native-mainnet
+path was measured without an HSD process. Before scheduler optimization, a
+68-second startup reached active height 1,942 (28.6 connected blocks/s). The
+optimized version uses immediate full eight-block activation slices, a
+15-second stalled-body failover, and 32 requests per peer within the unchanged
+128-request global bound.
+
+The versioned loopback sampler then observed one uninterrupted 60-second
+Brontide window with seven Ready peers: 833.332 headers/s, 46.767 received
+bodies/s, 43.967 stored bodies/s, and 47.667 active blocks/s. It ended at
+header 58,000, stored height 2,893, and active height 2,865 with zero failed or
+unavailable blocks, peer failures, bans, or runtime errors. The comparable
+active startup rate improved by about 67%.
+
+The release `hsrd-performance-gate` measured 100 consecutive regtest blocks.
+Tip-to-prepared-job latency was 286/1,179/3,015/4,078 us at
+P50/P95/P99/maximum; candidate validation was 9/12/13/14 us; local consensus
+connection was 642/2,427/4,283/4,752 us. All samples passed with zero failure
+or unavailable evidence. These tmpfs/in-memory early-chain measurements are
+regression evidence, not full-mainnet persistent-storage, loaded-mempool, WAN
+publication, or physical-ASIC qualification. See
+[`hsrd/docs/performance.md`](hsrd/docs/performance.md).
+
 ### Earlier seed-only plaintext peer discovery (superseded)
 
 This historical qualification predates native Brontide. Current public-network

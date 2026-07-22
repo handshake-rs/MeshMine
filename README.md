@@ -124,6 +124,9 @@ Performance checks must use release builds:
 ```sh
 cargo run --locked --release -p meshmine-share --bin share_performance_gate
 cargo run --locked --release -p meshmine-settlement --bin settlement_performance_gate
+cargo run --locked --release -p hns-node --bin hsrd-performance-gate \
+  --manifest-path hsrd/Cargo.toml
+python3 scripts/measure-hsrd-native-sync.py --self-test
 ```
 
 TLC instructions and checked state counts are in [models/README.md](models/README.md).

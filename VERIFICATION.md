@@ -12,7 +12,7 @@ architecture with Node.js 24.13.0 and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 350 all-feature tests, 342 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 356 all-feature tests, 347 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -225,8 +225,8 @@ stored/contextual failures, orphans/evictions, rejected messages, and
 This qualifies bounded HSD DNS bootstrap, v3 GETADDR/ADDR learning, failed
 target rotation, connection scheduling ahead of historical scan work, and
 seed-only restart progress over plaintext transport. Brontide, durable
-bans/reputation, and broader adversarial network qualification remain
-release-blocking.
+threshold bans (qualified separately below), long-lived reputation, and broader
+adversarial network qualification remained release-blocking at that stage.
 
 ### Durable peer-address restart qualification
 
@@ -260,7 +260,39 @@ advanced to 339,308 before another clean flush.
 This qualifies the record codec, HSD stale policy, attempt/cooldown restoration,
 clean flush, and real RocksDB restart path. The address book remains
 non-consensus operational input; it does not make plaintext peers authoritative
-or close the durable scoring/ban and Brontide gaps.
+or close the long-lived reputation, peer-diversity, and Brontide gaps.
+
+### Restart-durable HSD peer-ban qualification
+
+The pinned HSD `Peer`/`Pool`/`HostList` path uses a connection-local score of
+100 to ban the normalized host for 24 hours, with the host remaining banned
+through the exact expiry second. HSRD now preserves that threshold and expiry
+shape while making only the resulting IP ban restart-durable. Subthreshold
+scores remain connection-local and are intentionally not promoted into invented
+reputation.
+
+The live-manager regression crosses 99 then 100, proves no earlier ban event,
+disconnects all live sessions for the IP, and rejects both a new outbound socket
+and an accepted inbound socket before peer registration. The node regression
+proves every port on a banned IP is excluded from discovery selection and ADDR
+relay, that a dormant explicit target cannot consume a discovery slot, and that
+learned endpoints are removed without deleting operator configuration.
+
+The separate `peers/ban-list/v1` record is bounded to 16,384 normalized IPs,
+checksummed, versioned, generation-counted, and network-bound. Deterministic
+tests cover IPv4/IPv6 encoding, checksum and network rejection, earliest-expiry
+eviction, exact expiry pruning, clean no-op persistence, and a real RocksDB
+close/reopen that restores the active ban. Runtime diagnostics expose loaded,
+pruned, expired, active, event, generation, dirty, flush, decode-failure, and
+last-error state. New bans and expiry compaction flush immediately, failed
+writes remain dirty for the 120-second retry cadence, and shutdown performs a
+final flush.
+
+No healthy public peer was deliberately banned to manufacture live evidence.
+The local transport, scheduler, persistence, and RocksDB restart regressions
+exercise the enforcement boundaries without poisoning the preserved mainnet
+address cache. Brontide, long-lived subthreshold reputation, address-group
+diversity, and broader adversarial WAN qualification remain release-blocking.
 
 ## HSRD transaction-bearing name-root qualification update
 

@@ -249,6 +249,61 @@ def extract_hsrd(status: dict[str, Any], shadow: dict[str, Any]) -> dict[str, An
     }
 
 
+def extract_hsrd_header(status: dict[str, Any], shadow: dict[str, Any]) -> dict[str, Any]:
+    api_version = require_int(status.get("api_version"), "hsrd api_version", minimum=1)
+    if api_version < MINIMUM_HSRD_API_VERSION:
+        raise ProbeError(
+            f"hsrd diagnostic API {api_version} is older than required API "
+            f"{MINIMUM_HSRD_API_VERSION}"
+        )
+    network = require_string(status.get("network"), "hsrd network")
+    if network not in NETWORK_MAP:
+        raise ProbeError(f"unsupported hsrd network {network!r}")
+
+    authority = require_object(status.get("authority"), "hsrd authority")
+    authority_mode = require_string(authority.get("mode"), "hsrd authority mode")
+    if authority_mode not in {"disabled", "shadow"}:
+        raise ProbeError(
+            f"header comparison requires disabled or shadow authority, got {authority_mode!r}"
+        )
+    if require_bool(
+        authority.get("can_authorize_mining_templates"),
+        "hsrd mining-template authority",
+    ):
+        raise ProbeError("header comparison refuses a mining-authoritative hsrd instance")
+    if not require_bool(shadow.get("enabled"), "shadow-sync enabled flag"):
+        raise ProbeError("shadow-sync diagnostics report the runtime disabled")
+    if not require_bool(shadow.get("headers_only"), "shadow-sync headers-only flag"):
+        raise ProbeError("header comparison requires --shadow-sync-headers-only")
+
+    sync = require_object(shadow.get("sync"), "shadow-sync scheduler snapshot")
+    sync_tip = require_object(sync.get("best_header"), "shadow-sync best header")
+    height = require_int(sync_tip.get("height"), "shadow-sync best-header height")
+    block_hash = normalize_hash(sync_tip.get("hash"), "shadow-sync best-header hash")
+    if require_int(status.get("best_header_height"), "hsrd best-header height") != height:
+        raise ProbeError("hsrd status and shadow scheduler best-header heights disagree")
+    if normalize_hash(status.get("best_header_hash"), "hsrd best-header hash") != block_hash:
+        raise ProbeError("hsrd status and shadow scheduler best-header hashes disagree")
+
+    parity = require_object(status.get("parity"), "hsrd parity status")
+    return {
+        "api_version": api_version,
+        "network": network,
+        "height": height,
+        "block_hash": block_hash,
+        "authority_mode": authority_mode,
+        "runtime_instance": require_string(
+            shadow.get("runtime_instance"), "shadow-sync runtime instance"
+        ),
+        "received_headers": require_int(
+            shadow.get("received_headers"), "shadow-sync received headers"
+        ),
+        "oracle_revision": require_string(
+            parity.get("oracle_revision"), "hsrd HSD oracle revision"
+        ),
+    }
+
+
 def extract_hsd_info(info: dict[str, Any]) -> dict[str, Any]:
     network = require_string(info.get("network"), "HSD network")
     chain = require_object(info.get("chain"), "HSD chain info")
@@ -415,6 +470,62 @@ def probe_once(
         ),
         previous_still_canonical,
     )
+
+
+def probe_header_once(hsrd_url: str, cli: HsdCli, timeout: float) -> dict[str, Any]:
+    status_url = f"{hsrd_url}/api/v1/status"
+    shadow_url = f"{hsrd_url}/api/v1/shadow-sync"
+    hsrd_before = extract_hsrd_header(
+        read_http_json(status_url, timeout),
+        read_http_json(shadow_url, timeout),
+    )
+    hsd_before = extract_hsd_info(cli.info())
+    hsd_before["source_revision"] = cli.source_revision
+    if cli.source_revision != hsrd_before["oracle_revision"]:
+        raise ProbeError(
+            "pinned HSD source revision does not match hsrd's expected oracle revision"
+        )
+    if hsrd_before["height"] > hsd_before["height"]:
+        raise ProbeError(
+            f"HSD oracle height {hsd_before['height']} is behind hsrd best-header "
+            f"height {hsrd_before['height']}"
+        )
+
+    canonical_hash = cli.block_hash(hsrd_before["height"])
+    hsd_after = extract_hsd_info(cli.info())
+    hsd_after["source_revision"] = cli.source_revision
+    if hsd_after != hsd_before:
+        raise ProbeError("HSD tip changed during the header comparison probe")
+    hsrd_after = extract_hsrd_header(
+        read_http_json(status_url, timeout),
+        read_http_json(shadow_url, timeout),
+    )
+    if hsrd_after != hsrd_before:
+        raise ProbeError("hsrd best header changed during the header comparison probe")
+
+    matched = hsrd_before["block_hash"] == canonical_hash
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "mode": "header-sync",
+        "observed_at": int(time.time()),
+        "matched": matched,
+        "caught_up": hsrd_before["height"] == hsd_before["height"],
+        "network": hsrd_before["network"],
+        "height": hsrd_before["height"],
+        "block_hash": hsrd_before["block_hash"],
+        "hsd_canonical_hash": canonical_hash,
+        "received_headers": hsrd_before["received_headers"],
+        "hsrd_api_version": hsrd_before["api_version"],
+        "hsrd_authority_mode": hsrd_before["authority_mode"],
+        "hsrd_runtime_instance": hsrd_before["runtime_instance"],
+        "expected_hsd_oracle_revision": hsrd_before["oracle_revision"],
+        "hsd_source_revision": hsd_before["source_revision"],
+        "hsd_version": hsd_before["version"],
+        "hsd_tip_height": hsd_before["height"],
+        "hsd_tip_hash": hsd_before["tip"],
+        "hsd_pruned": hsd_before["pruned"],
+        "scope": "headers-difficulty-time-checkpoints-chainwork-ancestry",
+    }
 
 
 def empty_evidence_state() -> dict[str, Any]:
@@ -704,6 +815,21 @@ def self_test() -> None:
     assert extracted["block_hash"] == marker(1)
     assert extracted["resulting_root"] == marker(2)
 
+    header_status = dict(status)
+    header_status["best_header_height"] = 101
+    header_status["best_header_hash"] = [4] * 32
+    header_shadow = {
+        "enabled": True,
+        "headers_only": True,
+        "runtime_instance": "runtime-header",
+        "received_headers": 100,
+        "sync": {"best_header": {"hash": [4] * 32, "height": 101}},
+    }
+    header_extracted = extract_hsrd_header(header_status, header_shadow)
+    assert header_extracted["height"] == 101
+    assert header_extracted["block_hash"] == marker(4)
+    assert header_extracted["received_headers"] == 100
+
     hsrd = {
         "api_version": MINIMUM_HSRD_API_VERSION,
         "network": "mainnet",
@@ -807,6 +933,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--maximum-attempts", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=float, default=10.0)
     parser.add_argument("--allow-remote-hsrd", action="store_true")
+    parser.add_argument(
+        "--headers-only",
+        action="store_true",
+        help="compare hsrd's best header without requiring active-state sync",
+    )
+    parser.add_argument(
+        "--require-current-tip",
+        action="store_true",
+        help="in headers-only mode, fail unless hsrd reached the coherent HSD tip",
+    )
     parser.add_argument("--self-test", action="store_true")
     return parser.parse_args()
 
@@ -830,6 +966,10 @@ def main() -> int:
         error("--interval-seconds must be non-negative")
     if args.samples != 1 and args.interval_seconds < 0.1:
         error("multi-sample comparison requires --interval-seconds >= 0.1")
+    if args.require_current_tip and not args.headers_only:
+        error("--require-current-tip requires --headers-only")
+    if args.headers_only and args.state_file is not None:
+        error("--state-file records active-state evidence and cannot be used with --headers-only")
 
     try:
         hsrd_url = normalize_hsrd_url(args.hsrd_url, args.allow_remote_hsrd)
@@ -849,7 +989,7 @@ def main() -> int:
             if not state_file.is_absolute():
                 raise ProbeError("--state-file must be an absolute path")
             state_file = state_file.parent.resolve() / state_file.name
-        state = load_evidence_state(state_file)
+        state = load_evidence_state(state_file) if not args.headers_only else None
         cli = HsdCli(
             executable,
             list(args.hsd_cli_arg),
@@ -861,16 +1001,24 @@ def main() -> int:
 
     completed_samples = 0
     while args.samples == 0 or completed_samples < args.samples:
-        previous = state.get("last_observation")
+        previous = state.get("last_observation") if state is not None else None
         last_error = None
         for attempt in range(args.maximum_attempts):
             try:
-                observation, previous_canonical = probe_once(
-                    hsrd_url,
-                    cli,
-                    args.timeout_seconds,
-                    previous,
-                )
+                if args.headers_only:
+                    observation = probe_header_once(
+                        hsrd_url,
+                        cli,
+                        args.timeout_seconds,
+                    )
+                    previous_canonical = None
+                else:
+                    observation, previous_canonical = probe_once(
+                        hsrd_url,
+                        cli,
+                        args.timeout_seconds,
+                        previous,
+                    )
                 break
             except ProbeError as exc:
                 last_error = exc
@@ -886,24 +1034,29 @@ def main() -> int:
             )
             return 2
 
-        try:
-            next_state, recorded = advance_evidence_state(
-                state, observation, previous_canonical
-            )
-            if state_file is not None:
-                write_evidence_state(state_file, next_state)
-            state = next_state
-        except ProbeError as exc:
-            print(
-                json.dumps(
-                    {"status": "state-error", "error": str(exc)}, sort_keys=True
-                ),
-                file=sys.stderr,
-            )
-            return 2
+        if args.headers_only:
+            recorded = observation
+        else:
+            try:
+                next_state, recorded = advance_evidence_state(
+                    state, observation, previous_canonical
+                )
+                if state_file is not None:
+                    write_evidence_state(state_file, next_state)
+                state = next_state
+            except ProbeError as exc:
+                print(
+                    json.dumps(
+                        {"status": "state-error", "error": str(exc)}, sort_keys=True
+                    ),
+                    file=sys.stderr,
+                )
+                return 2
 
         print(json.dumps(recorded, sort_keys=True, separators=(",", ":")), flush=True)
         if not recorded["matched"]:
+            return 1
+        if args.require_current_tip and not recorded["caught_up"]:
             return 1
         completed_samples += 1
         if args.samples == 0 or completed_samples < args.samples:

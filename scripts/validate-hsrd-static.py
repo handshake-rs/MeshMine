@@ -874,7 +874,9 @@ def validate_shadow_sync() -> None:
             "connect_stored_active_state",
             "contextual_failed_bodies",
             "body_validator_only_marks_header_committed_invalidity_permanent",
-            "cooperative_header_import_cancels_at_a_durable_slice_boundary",
+            "maximum_header_packet_imports_as_one_durable_batch",
+            "shadow_header_slice_validation_is_atomic",
+            "headers_only: shadow_sync_config.headers_only",
             "PersistCheckpoint",
             "observation_only: !shadow_sync_config.connect_active_state",
             "runtime_instance: runtime_instance_id()",
@@ -893,6 +895,8 @@ def validate_shadow_sync() -> None:
         comparison,
         (
             "MINIMUM_HSRD_API_VERSION = 8",
+            "probe_header_once",
+            '"scope": "headers-difficulty-time-checkpoints-chainwork-ancestry"',
             "active_state_resulting_root",
             'root_source = "next-header"',
             'root_source = "next-template"',
@@ -928,6 +932,7 @@ def validate_shadow_sync() -> None:
         main_source,
         (
             "shadow_sync: bool",
+            "shadow_sync_headers_only: bool",
             "shadow_sync_active_state: bool",
             "active_state_connect_batch: usize",
             "shadow_sync_poll_ms: u64",

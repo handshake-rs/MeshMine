@@ -18,6 +18,7 @@ const AirdropProof = require('hsd/lib/primitives/airdropproof');
 const InvItem = require('hsd/lib/primitives/invitem');
 const {CompactBlock, TXRequest, TXResponse} = require('hsd/lib/net/bip152');
 const NetAddress = require('hsd/lib/net/netaddress');
+const {CipherState, Brontide} = require('hsd/lib/net/brontide');
 const Framer = require('hsd/lib/net/framer');
 const packets = require('hsd/lib/net/packets');
 const Network = require('hsd/lib/protocol/network');
@@ -141,6 +142,83 @@ function frameCase(id, networkName, packet) {
   };
 }
 
+function brontideFixture() {
+  const key = Buffer.alloc(32, 0x21);
+  const salt = Buffer.alloc(32, 0x11);
+  const cipher = new CipherState();
+  cipher.initSalt(key, salt);
+  const firstCiphertext = Buffer.from('hello', 'ascii');
+  const firstTag = cipher.encrypt(firstCiphertext);
+  const secondCiphertext = Buffer.from('hello', 'ascii');
+  const secondTag = cipher.encrypt(secondCiphertext);
+
+  const rotating = new CipherState();
+  rotating.initSalt(key, salt);
+  rotating.nonce = 999;
+  rotating.update();
+  rotating.encrypt(Buffer.from('hello', 'ascii'));
+
+  const initiator = new Brontide();
+  const responder = new Brontide();
+  initiator.generateKey = () => Buffer.alloc(32, 0x12);
+  responder.generateKey = () => Buffer.alloc(32, 0x22);
+  initiator.init(
+    true,
+    Buffer.alloc(32, 0x11),
+    Buffer.from(
+      '028d7500dd4c12685d1f568b4c2b5048e8534b873319f3a8daa612b469132ec7f7',
+      'hex'
+    )
+  );
+  responder.init(false, Buffer.alloc(32, 0x21), null);
+  responder.recvActOne(initiator.genActOne());
+  initiator.recvActTwo(responder.genActTwo());
+  responder.recvActThree(initiator.genActThree());
+  const firstPacket = initiator.write(Buffer.from('hello', 'ascii'));
+
+  function fixedSeeds(name) {
+    const network = Network.get(name);
+    const seeds = require(`hsd/lib/net/seeds/${name}`);
+    return seeds
+      .filter(seed => seed.includes('@'))
+      .map(seed => {
+        const address = NetAddress.fromHostname(seed, network);
+        return {
+          host: address.host,
+          port: address.port,
+          key: address.key.toString('hex')
+        };
+      });
+  }
+
+  return {
+    protocolName: 'Noise_XK_secp256k1_ChaChaPoly_SHA256+SVDW_Squared',
+    prologue: 'hns',
+    rotationInterval: 1000,
+    streamHeaderSize: 20,
+    actSizes: [80, 80, 65],
+    cipher: {
+      firstCiphertext: firstCiphertext.toString('hex'),
+      firstTag: firstTag.toString('hex'),
+      secondCiphertext: secondCiphertext.toString('hex'),
+      secondTag: secondTag.toString('hex'),
+      rotatedKey: rotating.key.toString('hex'),
+      rotatedSalt: rotating.salt.toString('hex')
+    },
+    handshake: {
+      initiatorSendKey: initiator.sendCipher.key.toString('hex'),
+      initiatorReceiveKey: initiator.recvCipher.key.toString('hex'),
+      responderSendKey: responder.sendCipher.key.toString('hex'),
+      responderReceiveKey: responder.recvCipher.key.toString('hex'),
+      firstPacket: firstPacket.toString('hex')
+    },
+    fixedSeeds: {
+      main: fixedSeeds('main'),
+      testnet: fixedSeeds('testnet')
+    }
+  };
+}
+
 function decodeVersion(payload) {
   const packet = packets.VersionPacket.decode(payload);
   return {
@@ -254,7 +332,7 @@ function buildFixture() {
     .map(([name, value]) => ({name, value}));
 
   return {
-    schema: 3,
+    schema: 4,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION
@@ -294,7 +372,8 @@ function buildFixture() {
         key: NetAddress.decode(unsupportedAddress).key.toString('hex')
       },
       canonicalReencode: normalizedAddress.toString('hex')
-    }
+    },
+    brontide: brontideFixture()
   };
 }
 

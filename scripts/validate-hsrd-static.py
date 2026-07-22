@@ -931,7 +931,7 @@ def validate_shadow_sync() -> None:
             "resolve_hsd_dns_seeds",
             "fill_discovery_slots",
             "Packet::Addr(items)",
-            "dns_discovery_uses_pinned_hsd_network_seeds",
+            "discovery_uses_pinned_hsd_key_bearing_seeds",
             "addr_exchange_requires_v3_and_serves_one_inbound_request",
             "bounded_address_book_applies_hsd_admission_and_eviction_rules",
             "failed_discovery_targets_rotate_without_displacing_configured_peers",

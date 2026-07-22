@@ -189,7 +189,12 @@ This qualifies restart persistence and gap recovery for bounded early-mainnet
 canonical body scheduling. It is not complete historical replay, sustained
 reorganization/pruning evidence, or authority qualification.
 
-### Seed-only plaintext peer discovery
+### Earlier seed-only plaintext peer discovery (superseded)
+
+This historical qualification predates native Brontide. Current public-network
+code rejects keyless plaintext peers and bootstraps from HSD's pinned
+key-bearing fixed-seed table; the measurements below remain evidence for the
+address-book and scheduler behavior, not for the current transport boundary.
 
 On 2026-07-22, the preserved schema-14 WAL replay was restarted with the final
 optimized binary using `--p2p-discovery` and no explicit `--connect` sockets.

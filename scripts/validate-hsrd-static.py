@@ -958,6 +958,20 @@ def validate_mining_engine() -> None:
         if not path.is_file():
             fail(f"Mining engine file is missing: {path.relative_to(ROOT)}")
 
+    mining_oracle = read_text(
+        ROOT / "hsd-oracle/generate-hsrd-mining-template-fixtures.js"
+    )
+    require_tokens(
+        mining_oracle,
+        (
+            "policy.MAX_TX_SIGOPS",
+            "policy.BYTES_PER_SIGOP",
+            "tx.getSigopsSize(sigops)",
+            "policy.getMinFee(policySize, rate)",
+        ),
+        "HSD mining and mempool policy oracle",
+    )
+
     mempool = read_text(ROOT / "hsrd/crates/hns-mempool/src/lib.rs")
     require_tokens(
         mempool,
@@ -965,6 +979,13 @@ def validate_mining_engine() -> None:
             "pub struct MempoolLimits",
             "pub struct MempoolSnapshot",
             "pub fn submit_with_context",
+            "pub const MAX_TX_SIGOPS",
+            "pub fn sigop_adjusted_virtual_size",
+            "pub fn minimum_policy_fee",
+            "transaction_sigops(&transaction, &input_coins)",
+            "bad-txns-too-many-sigops",
+            "native_sigop_accounting_enforces_hsd_transaction_policy",
+            "sigop_adjusted_policy_size_sets_minimum_relay_fee",
             "consensus-verifier-incomplete",
             "orphan-capacity",
             "pub fn remove_confirmed",
@@ -975,6 +996,26 @@ def validate_mining_engine() -> None:
         ),
         "Mining engine mempool",
     )
+    submit_start = mempool.find("fn submit_checked")
+    submit_end = mempool.find("fn promote_orphans", submit_start)
+    if submit_start < 0 or submit_end < 0:
+        fail("Mining engine mempool admission boundary is missing")
+    admission = mempool[submit_start:submit_end]
+    ordered_admission = (
+        "verify_sequence_locks(",
+        "transaction_sigops(&transaction, &input_coins)",
+        "input_verifier.verify_input",
+        "verify_transaction_covenant_links",
+        "contextual_verifier.verify",
+    )
+    admission_positions = [admission.find(token) for token in ordered_admission]
+    if any(position < 0 for position in admission_positions) or admission_positions != sorted(
+        admission_positions
+    ):
+        fail(
+            "Mempool relative locks, sigops, authorization, covenant linkage, and "
+            "contextual validation are not ordered fail-closed"
+        )
 
     template = read_text(ROOT / "hsrd/crates/hns-mining/src/template.rs")
     require_tokens(
@@ -986,6 +1027,8 @@ def validate_mining_engine() -> None:
             "pub struct FutureTemplateCache",
             "snapshot.next_tree_root",
             "minimum_package_fee_rate",
+            "package.policy_size",
+            "package_ranking_uses_hsd_sigop_size_but_block_fit_uses_weight",
             "block_merkle_root",
             "block_witness_root",
             "../../../fixtures/hsd/mining/template-v1.json",

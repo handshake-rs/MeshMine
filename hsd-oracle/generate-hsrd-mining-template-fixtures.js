@@ -14,6 +14,8 @@ const Address = require('hsd/lib/primitives/address');
 const BlockTemplate = require('hsd/lib/mining/template');
 const consensus = require('hsd/lib/protocol/consensus');
 const Network = require('hsd/lib/protocol/network');
+const policy = require('hsd/lib/protocol/policy');
+const TX = require('hsd/lib/primitives/tx');
 
 const ORACLE_REVISION = '698e252ebc7b5c1dd0a9587e342fdd153d020ae4';
 const TARGET = path.resolve(
@@ -99,9 +101,36 @@ function subsidyCases() {
   return cases;
 }
 
-function buildFixture() {
+function mempoolSigopPolicy(transactionRaw) {
+  const tx = TX.decode(Buffer.from(transactionRaw, 'hex'));
   return {
-    schema: 1,
+    transactionRaw,
+    transactionWeight: tx.getWeight(),
+    maxTxSigops: policy.MAX_TX_SIGOPS,
+    bytesPerSigop: policy.BYTES_PER_SIGOP,
+    cases: [0, 1, 40, 4000, 16000, 16001].map(sigops => ({
+      sigops,
+      policySize: tx.getSigopsSize(sigops),
+      accepted: sigops <= policy.MAX_TX_SIGOPS
+    })),
+    minimumFeeCases: [
+      [0, 3],
+      [88, 0],
+      [88, 3],
+      [20000, 3],
+      [80005, 3]
+    ].map(([policySize, rate]) => ({
+      policySize,
+      rate,
+      minimumFee: policy.getMinFee(policySize, rate)
+    }))
+  };
+}
+
+function buildFixture() {
+  const coinbase = deterministicCoinbase();
+  return {
+    schema: 2,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION
@@ -111,7 +140,8 @@ function buildFixture() {
       maximumCoinbaseWitnessSize: 1000
     },
     subsidyCases: subsidyCases(),
-    deterministicCoinbase: deterministicCoinbase()
+    deterministicCoinbase: coinbase,
+    mempoolSigopPolicy: mempoolSigopPolicy(coinbase.raw)
   };
 }
 

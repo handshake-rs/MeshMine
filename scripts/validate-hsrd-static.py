@@ -1288,6 +1288,44 @@ def validate_native_performance() -> None:
     )
 
 
+def validate_mainnet_canary_deployment() -> None:
+    service_path = ROOT / "hsrd/deploy/meshmine-hsrd-mainnet-canary.service"
+    documentation_path = ROOT / "hsrd/docs/mainnet-canary.md"
+    if not service_path.is_file():
+        fail(f"Mainnet canary service is missing: {service_path.relative_to(ROOT)}")
+
+    service = read_text(service_path)
+    require_tokens(
+        service,
+        (
+            "--authority-mode native --mainnet-canary --native-sync",
+            "--rpc-bind 127.0.0.1:12047",
+            "Restart=on-failure",
+            "KillSignal=SIGTERM",
+            "ProtectSystem=strict",
+            "ProtectHome=read-only",
+            "ReadWritePaths=%h/.local/share/hsrd/mainnet-canary",
+        ),
+        "Native mainnet canary service",
+    )
+    documentation = read_text(documentation_path)
+    require_tokens(
+        documentation,
+        (
+            "meshmine-hsrd-mainnet-canary.service",
+            "systemctl --user enable --now",
+            "delivers SIGTERM for a clean checkpoint",
+        ),
+        "Native mainnet canary deployment documentation",
+    )
+    node = read_text(ROOT / "hsrd/crates/hns-node/src/lib.rs")
+    require_tokens(
+        node,
+        ("SignalKind::terminate()", "SIGTERM shutdown stream closed unexpectedly"),
+        "Native mainnet canary shutdown handling",
+    )
+
+
 def main() -> None:
     parse_metadata()
     validate_component_naming()
@@ -1299,6 +1337,7 @@ def main() -> None:
     validate_shadow_sync()
     validate_mining_engine()
     validate_native_performance()
+    validate_mainnet_canary_deployment()
     print("hsrd static validation passed")
 
 

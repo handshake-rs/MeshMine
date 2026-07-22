@@ -12,7 +12,7 @@ architecture with Node.js 24.13.0 and npm 11.6.2.
 | Surface | Evidence | Result |
 |---|---|---|
 | Root Rust workspace | Locked formatting, all-target/all-feature Clippy with warnings denied, all-target/all-feature tests, and optimized all-target/all-feature build | Pass |
-| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 346 all-feature tests, 339 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
+| Native HSRD workspace | Locked formatting, strict all-target/all-feature Clippy, 350 all-feature tests, 342 no-default-feature tests, optimized all-target/all-feature build, and the complete pinned-HSD source handoff | Pass (updated 2026-07-22) |
 | HSRD fuzz workspace | Locked metadata, formatting, and all-target checks for every fuzz target | Pass |
 | Source integrity | Six fail-closed Python validators, manifest/file/digest closure, JSON/TOML and language syntax, executable modes, Markdown links, merge markers, and Git whitespace | Pass |
 | Pinned HSD oracle | Sixteen deterministic fixture generators/exporters, signed operator receipt, 14 Core vectors, 10,000 proof differentials, 10,000 MPC-opened vectors, regtest block acceptance, valid/invalid body checks, payout acceptance/audit, and 1,000-session overlay recovery | Pass |
@@ -224,9 +224,43 @@ stored/contextual failures, orphans/evictions, rejected messages, and
 
 This qualifies bounded HSD DNS bootstrap, v3 GETADDR/ADDR learning, failed
 target rotation, connection scheduling ahead of historical scan work, and
-seed-only restart progress over plaintext transport. Address state and peer
-reputation remain process-local; Brontide, durable bans/reputation, and broader
-adversarial network qualification remain release-blocking.
+seed-only restart progress over plaintext transport. Brontide, durable
+bans/reputation, and broader adversarial network qualification remain
+release-blocking.
+
+### Durable peer-address restart qualification
+
+The bounded discovered-address state now uses the previously reserved `peers`
+column family. One checksummed, versioned, network-bound snapshot retains each
+IP endpoint's services, advertised time, attempts, last success, last attempt,
+and stable selection sequence. Explicit operator peers are never cached. Dirty
+state flushes on HSD's 120-second cadence and on runtime shutdown. Restore
+applies the same 60-second recent-attempt exception, 30-day address horizon,
+three-attempt never-successful rule, and ten-failure/seven-day successful-host
+rule as the pinned HSD `HostList`; cooldowns are reconstructed with the local
+60-second bound. Malformed cache data warns and falls back to discovery, while
+a storage read error still aborts startup.
+
+The preserved mainnet replay at active/stored height 7,438 first bootstrapped
+from DNS with no prior cache, reached 279 known addresses, and cleanly flushed
+generation 1. The exact optimized binary then reopened the same RocksDB store,
+loaded 187 usable addresses before network learning, and pruned 92 stale HSD
+advertisements. It made all eight outbound peers Ready after eight attempts and
+continued to 285 known addresses with zero decode or flush failures and no
+runtime error. Best-header/target height 339,307 remained coherent across the
+restart. A second clean shutdown flushed the refreshed cache.
+
+After the TCP-timestamp fidelity regression and complete final-tree gates, the
+exact final release reopened generation 4. It loaded 197 entries, pruned 91
+stale entries, made all eight peers Ready after eight attempts, and continued
+to 296 known addresses. Decode/flush failures and the runtime error remained
+zero; active/stored height stayed coherently at 7,438 while best-header/target
+advanced to 339,308 before another clean flush.
+
+This qualifies the record codec, HSD stale policy, attempt/cooldown restoration,
+clean flush, and real RocksDB restart path. The address book remains
+non-consensus operational input; it does not make plaintext peers authoritative
+or close the durable scoring/ban and Brontide gaps.
 
 ## HSRD transaction-bearing name-root qualification update
 

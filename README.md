@@ -287,6 +287,12 @@ Example configurations are in `specs/core-link-*.example.json`. See
 [asic-profiles.md](specs/asic-profiles.md). Native mainnet authority and
 production eligibility remain disabled.
 
+The native mainnet canary profile can now be started for synchronization and
+readiness observation without HSD shadowing. Its explicit flag cannot energize
+ASIC work until the synchronized tip, durable validation state, and every
+native consensus gate are authoritative; the current source still refuses that
+transition. See [hsrd/docs/mainnet-canary.md](hsrd/docs/mainnet-canary.md).
+
 ### Offline active-receipt migration
 
 Receipt-enabled nodes use the v3 active-receipt head and migration formats.

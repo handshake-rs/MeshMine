@@ -23,7 +23,9 @@ use thiserror::Error;
 pub const MAX_PARENT_RPC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_PARENT_RPC_PATH_BYTES: usize = 512;
 pub const MAX_PARENT_AUTHORIZATION_BYTES: usize = 4096;
-pub const MIN_HSRD_PARENT_AUTHORITY_API_VERSION: u32 = 9;
+pub const MIN_HSRD_PARENT_AUTHORITY_API_VERSION: u32 = 10;
+pub const MAX_MAINNET_CANARY_HEADER_AGE: Duration = Duration::from_secs(30 * 60);
+pub const MAX_MAINNET_CANARY_CACHE_TTL: Duration = Duration::from_secs(1);
 const MAX_HTTP_HEADER_BYTES: usize = 64 * 1024;
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -101,6 +103,9 @@ impl LiveParentPolicy {
             || self.maximum_certificate_depth.saturating_add(1) < self.minimum_confirmations
             || self.maximum_header_age.is_zero()
             || self.cache_ttl > Duration::from_secs(60)
+            || (self.network_id == 0
+                && (self.maximum_header_age > MAX_MAINNET_CANARY_HEADER_AGE
+                    || self.cache_ttl > MAX_MAINNET_CANARY_CACHE_TTL))
         {
             return Err(ParentOracleError::InvalidConfiguration);
         }
@@ -128,10 +133,77 @@ pub struct ParentChainView {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParentAuthorityView {
     pub mode: String,
+    #[serde(default)]
+    pub synchronized: bool,
+    #[serde(default)]
+    pub mainnet_canary_enabled: bool,
+    #[serde(default)]
+    pub mainnet_canary_active: bool,
     pub consensus_complete: bool,
     pub can_authorize_mining_templates: bool,
     pub can_accept_mining_candidates: bool,
     pub blockers: Vec<String>,
+    #[serde(default)]
+    pub readiness: ParentConsensusReadinessView,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParentConsensusReadinessView {
+    pub header_pow_difficulty: bool,
+    pub checkpoints_and_deployments: bool,
+    pub block_syntax: bool,
+    pub absolute_finality: bool,
+    pub sighash_primitives: bool,
+    pub relative_lock_primitives: bool,
+    pub witness_program_foundation: bool,
+    pub signature_backend: bool,
+    pub input_authorization_fail_closed: bool,
+    pub relative_sequence_locks: bool,
+    pub scripts: bool,
+    pub covenant_linkage: bool,
+    pub contextual_covenants: bool,
+    pub claims_and_airdrops: bool,
+    pub name_state: bool,
+    pub urkel_roots: bool,
+    pub sequence_consistent_snapshots: bool,
+    pub durable_store_identity: bool,
+    pub side_chain_storage: bool,
+    pub best_work_fork_choice: bool,
+    pub validated_reorg_planning: bool,
+    pub atomic_reorganizations: bool,
+    pub wal_durability: bool,
+    pub historical_replay: bool,
+    pub invalid_corpus: bool,
+}
+
+impl ParentConsensusReadinessView {
+    fn complete(&self) -> bool {
+        self.header_pow_difficulty
+            && self.checkpoints_and_deployments
+            && self.block_syntax
+            && self.absolute_finality
+            && self.sighash_primitives
+            && self.relative_lock_primitives
+            && self.witness_program_foundation
+            && self.signature_backend
+            && self.input_authorization_fail_closed
+            && self.relative_sequence_locks
+            && self.scripts
+            && self.covenant_linkage
+            && self.contextual_covenants
+            && self.claims_and_airdrops
+            && self.name_state
+            && self.urkel_roots
+            && self.sequence_consistent_snapshots
+            && self.durable_store_identity
+            && self.side_chain_storage
+            && self.best_work_fork_choice
+            && self.validated_reorg_planning
+            && self.atomic_reorganizations
+            && self.wal_durability
+            && self.historical_replay
+            && self.invalid_corpus
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -377,6 +449,7 @@ impl LiveParentOracle {
         if !snapshot.rpc_authentication_required
             || snapshot.authority.mode != "native"
             || !snapshot.authority.consensus_complete
+            || !snapshot.authority.readiness.complete()
             || !snapshot.authority.can_authorize_mining_templates
             || !snapshot.authority.can_accept_mining_candidates
             || !snapshot.authority.blockers.is_empty()
@@ -386,6 +459,11 @@ impl LiveParentOracle {
                 .tip_validation
                 .as_ref()
                 .is_some_and(ParentTipValidationView::is_mining_authoritative)
+            || (self.policy.network_id == 0
+                && (!snapshot.authority.synchronized
+                    || !snapshot.authority.mainnet_canary_enabled
+                    || !snapshot.authority.mainnet_canary_active
+                    || snapshot.chain.headers != snapshot.chain.blocks))
         {
             return Err(ParentOracleError::AuthorityUnavailable);
         }
@@ -677,6 +755,31 @@ mod tests {
         confirmations: i64,
         authoritative: bool,
     ) -> SocketAddr {
+        spawn_rpc_source_view_with_canary(
+            network,
+            header_hash,
+            header_time,
+            blocks,
+            best_block_hash,
+            confirmations,
+            authoritative,
+            network == "mainnet" && authoritative,
+            authoritative,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_rpc_source_view_with_canary(
+        network: &'static str,
+        header_hash: [u8; 32],
+        header_time: u64,
+        blocks: u32,
+        best_block_hash: [u8; 32],
+        confirmations: i64,
+        authoritative: bool,
+        canary_active: bool,
+        readiness_complete: bool,
+    ) -> SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         thread::spawn(move || {
@@ -709,6 +812,33 @@ mod tests {
                 "active_chain": true,
                 "failed": false,
             });
+            let readiness = json!({
+                "header_pow_difficulty": readiness_complete,
+                "checkpoints_and_deployments": readiness_complete,
+                "block_syntax": readiness_complete,
+                "absolute_finality": readiness_complete,
+                "sighash_primitives": readiness_complete,
+                "relative_lock_primitives": readiness_complete,
+                "witness_program_foundation": readiness_complete,
+                "signature_backend": readiness_complete,
+                "input_authorization_fail_closed": readiness_complete,
+                "relative_sequence_locks": readiness_complete,
+                "scripts": readiness_complete,
+                "covenant_linkage": readiness_complete,
+                "contextual_covenants": readiness_complete,
+                "claims_and_airdrops": readiness_complete,
+                "name_state": readiness_complete,
+                "urkel_roots": readiness_complete,
+                "sequence_consistent_snapshots": readiness_complete,
+                "durable_store_identity": readiness_complete,
+                "side_chain_storage": readiness_complete,
+                "best_work_fork_choice": readiness_complete,
+                "validated_reorg_planning": readiness_complete,
+                "atomic_reorganizations": readiness_complete,
+                "wal_durability": readiness_complete,
+                "historical_replay": readiness_complete,
+                "invalid_corpus": readiness_complete,
+            });
             let result = json!({
                 "api_version": MIN_HSRD_PARENT_AUTHORITY_API_VERSION,
                 "network": network,
@@ -727,10 +857,14 @@ mod tests {
                 },
                 "authority": {
                     "mode": "native",
+                    "synchronized": authoritative,
+                    "mainnet_canary_enabled": canary_active,
+                    "mainnet_canary_active": canary_active,
                     "consensus_complete": authoritative,
                     "can_authorize_mining_templates": authoritative,
                     "can_accept_mining_candidates": authoritative,
                     "blockers": if authoritative { json!([]) } else { json!(["historical replay"]) },
+                    "readiness": readiness,
                 },
                 "authoritative_mining_tip": authoritative,
                 "pending_best_chain_activation": false,
@@ -863,6 +997,66 @@ mod tests {
     }
 
     #[test]
+    fn mainnet_requires_the_explicit_synchronized_hsrd_canary_gate() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut certificate = test_certificate(now);
+        certificate.network_id = 0;
+        let mut mainnet_policy = policy();
+        mainnet_policy.network_id = 0;
+
+        let blocked = spawn_rpc_source_view_with_canary(
+            "mainnet",
+            certificate.parent_hash,
+            now,
+            certificate.parent_height,
+            certificate.parent_hash,
+            1,
+            true,
+            false,
+            true,
+        );
+        let oracle =
+            LiveParentOracle::new(mainnet_policy.clone(), source("hsrd", blocked)).unwrap();
+        assert!(matches!(
+            oracle.qualify_active(&certificate),
+            Err(ParentOracleError::AuthorityUnavailable)
+        ));
+
+        let inconsistent = spawn_rpc_source_view_with_canary(
+            "mainnet",
+            certificate.parent_hash,
+            now,
+            certificate.parent_height,
+            certificate.parent_hash,
+            1,
+            true,
+            true,
+            false,
+        );
+        let oracle =
+            LiveParentOracle::new(mainnet_policy.clone(), source("hsrd", inconsistent)).unwrap();
+        assert!(matches!(
+            oracle.qualify_active(&certificate),
+            Err(ParentOracleError::AuthorityUnavailable)
+        ));
+
+        let enabled = spawn_rpc_source_view(
+            "mainnet",
+            certificate.parent_hash,
+            now,
+            certificate.parent_height,
+            certificate.parent_hash,
+            1,
+            true,
+        );
+        let oracle = LiveParentOracle::new(mainnet_policy, source("hsrd", enabled)).unwrap();
+        assert!(oracle.qualify_active(&certificate).unwrap().qualified);
+    }
+
+    #[test]
     fn active_tip_qualification_rejects_a_deep_canonical_parent() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -932,6 +1126,27 @@ mod tests {
             maximum_response_bytes: 1024,
         };
         assert!(LiveParentOracle::new(policy(), unauthenticated).is_err());
+    }
+
+    #[test]
+    fn mainnet_canary_policy_caps_tip_age_and_cache_duration() {
+        let mut mainnet = policy();
+        mainnet.network_id = 0;
+        mainnet.maximum_header_age = MAX_MAINNET_CANARY_HEADER_AGE;
+        mainnet.cache_ttl = MAX_MAINNET_CANARY_CACHE_TTL;
+        mainnet.validate().unwrap();
+
+        mainnet.maximum_header_age = MAX_MAINNET_CANARY_HEADER_AGE + Duration::from_millis(1);
+        assert!(matches!(
+            mainnet.validate(),
+            Err(ParentOracleError::InvalidConfiguration)
+        ));
+        mainnet.maximum_header_age = MAX_MAINNET_CANARY_HEADER_AGE;
+        mainnet.cache_ttl = MAX_MAINNET_CANARY_CACHE_TTL + Duration::from_millis(1);
+        assert!(matches!(
+            mainnet.validate(),
+            Err(ParentOracleError::InvalidConfiguration)
+        ));
     }
 
     #[test]

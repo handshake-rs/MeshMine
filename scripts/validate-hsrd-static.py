@@ -342,7 +342,7 @@ def validate_schema_coordination() -> None:
     require_tokens(
         node_source,
         (
-            "HSRD_DIAGNOSTIC_API_VERSION: u32 = 9",
+            "HSRD_DIAGNOSTIC_API_VERSION: u32 = 10",
             "store_validated_alternate",
             "store_failed_block",
             "best_chain_activation_plan",
@@ -378,6 +378,11 @@ def validate_schema_coordination() -> None:
             "local_state_fault_does_not_poison_a_stored_branch",
             "valid_block_commit_publishes_targeted_caches_without_full_index_rescan",
             "mining_snapshot_uses_interval_committed_name_root",
+            "mainnet_canary: bool",
+            "validate_mainnet_canary_config",
+            "authority_can_mine_with_readiness",
+            "best header and active-state tip are not synchronized",
+            "mainnet_canary_requires_explicit_hardened_config_and_complete_readiness",
         ),
         "best-chain activation",
     )

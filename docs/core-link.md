@@ -2,6 +2,11 @@
 
 Status: source-complete pre-production handoff. Native mainnet authority remains disabled.
 
+The explicit native mainnet canary can now run synchronization and report its
+gates, but Core still rejects its work until `hsrd` reports the synchronized,
+all-readiness `mainnet_canary_active` state. This introduces no HSD runtime or
+shadow dependency.
+
 ## Purpose
 
 The private Core/operator transport replaces the research parent-certificate
@@ -212,6 +217,9 @@ separately.
 
 - Both daemons reject `production: true`.
 - HSD has no runtime role in this path.
+- Mainnet additionally requires hsrd's explicit canary flag, exact
+  header/active-state synchronization, every individual readiness bit, and the
+  stricter mainnet freshness/cache policy.
 - `hsrd` remains pre-authority, so its current incomplete readiness response
   deliberately makes Core reject all authority-bearing work.
 - The authenticated hsrd RPC transport is local HTTP; public or remote

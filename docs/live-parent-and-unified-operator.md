@@ -29,6 +29,12 @@ The design does not turn the operator dashboard or work coordinator into a
 consensus authority. It preserves the portable backend architecture and keeps
 hardware-specific hashing below the assignment boundary.
 
+On mainnet, Core additionally requires the explicit native canary flag, an
+exact best-header/active-state hash-height-chainwork match, every individual
+consensus-readiness bit, a current authoritative tip, and a tightly bounded
+freshness/cache window. The current incomplete readiness bits intentionally
+prevent gateway activation while native synchronization and qualification run.
+
 ## Failure behavior
 
 | Failure | Result |

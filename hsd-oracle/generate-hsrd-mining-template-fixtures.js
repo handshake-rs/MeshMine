@@ -167,10 +167,30 @@ function mempoolStandardPolicy(transactionRaw) {
   };
 }
 
+function mempoolDynamicPolicy() {
+  const source = fs.readFileSync(
+    require.resolve('hsd/lib/mempool/mempool'),
+    'utf8'
+  );
+  assert.match(source, /const threshold = maxSize - \(maxSize \/ 10\);/);
+  assert.match(source, /if \(this\.hasDepends\(entry\.tx\)\)\s+continue;/);
+  assert.match(source, /now >= entry\.time \+ expiryTime/);
+  assert.match(source, /if \(useDesc\(a\)\) \{\s+xf = a\.descFee;/);
+  assert.match(source, /if \(x === y\) \{\s+x = a\.time;\s+y = b\.time;/);
+  return {
+    maximumSize: policy.MEMPOOL_MAX_SIZE,
+    expiryTime: policy.MEMPOOL_EXPIRY_TIME,
+    trimTarget: {numerator: 9, denominator: 10},
+    dependencyRootsOnly: true,
+    descendantPackageRate: true,
+    equalRateOldestFirst: true
+  };
+}
+
 function buildFixture() {
   const coinbase = deterministicCoinbase();
   return {
-    schema: 3,
+    schema: 4,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION
@@ -182,7 +202,8 @@ function buildFixture() {
     subsidyCases: subsidyCases(),
     deterministicCoinbase: coinbase,
     mempoolSigopPolicy: mempoolSigopPolicy(coinbase.raw),
-    mempoolStandardPolicy: mempoolStandardPolicy(coinbase.raw)
+    mempoolStandardPolicy: mempoolStandardPolicy(coinbase.raw),
+    mempoolDynamicPolicy: mempoolDynamicPolicy()
   };
 }
 

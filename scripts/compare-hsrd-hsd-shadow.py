@@ -37,6 +37,11 @@ NETWORK_MAP = {
     "regtest": "regtest",
     "simnet": "simnet",
 }
+# Pinned HSD revision 698e252e exposes these consensus effects from
+# DeploymentState: mandatory script flags are MINIMALDATA|MINIMALIF|NULLFAIL,
+# and no deployed version bit changes transaction lock flags.
+HSD_MANDATORY_SCRIPT_FLAGS = 50
+HSD_DEPLOYMENT_LOCK_FLAGS = 0
 
 
 class ProbeError(RuntimeError):
@@ -155,6 +160,9 @@ class HsdCli:
 
     def info(self) -> dict[str, Any]:
         return self.json(["info"], "hsd info")
+
+    def blockchain_info(self) -> dict[str, Any]:
+        return self.json(["rpc", "getblockchaininfo"], "HSD blockchain info")
 
     def block_hash(self, height: int) -> str:
         output = self._run(["rpc", "getblockhash", str(height)])
@@ -304,6 +312,82 @@ def extract_hsrd_header(status: dict[str, Any], shadow: dict[str, Any]) -> dict[
     }
 
 
+def extract_hsrd_header_deployments(value: dict[str, Any]) -> dict[str, Any]:
+    best = require_object(value.get("best_header"), "header deployment best header")
+    height = require_int(best.get("height"), "header deployment best-header height")
+    block_hash = normalize_hash(
+        best.get("hash"), "header deployment best-header hash"
+    )
+    next_height = require_int(value.get("next_height"), "deployment next height")
+    if next_height != height + 1:
+        raise ProbeError("header deployment next height is not contiguous")
+
+    raw_deployments = value.get("deployments")
+    if not isinstance(raw_deployments, list) or not raw_deployments:
+        raise ProbeError("header deployments must be a non-empty array")
+    deployments: dict[str, dict[str, Any]] = {}
+    for index, raw in enumerate(raw_deployments):
+        item = require_object(raw, f"header deployment {index}")
+        name = require_string(item.get("name"), f"header deployment {index} name")
+        state = require_string(
+            item.get("state"), f"header deployment {name} state"
+        ).lower()
+        if state not in {"defined", "started", "locked_in", "active", "failed"}:
+            raise ProbeError(f"header deployment {name} has unknown state {state!r}")
+        if name in deployments:
+            raise ProbeError(f"header deployment {name!r} is duplicated")
+        bit = require_int(item.get("bit"), f"header deployment {name} bit")
+        if bit > 31:
+            raise ProbeError(f"header deployment {name} bit exceeds 31")
+        deployments[name] = {
+            "state": state,
+            "bit": bit,
+            "start_time": require_int(
+                item.get("start_time"), f"header deployment {name} start time"
+            ),
+            "timeout": require_int(
+                item.get("timeout"), f"header deployment {name} timeout"
+            ),
+        }
+
+    checkpoint_value = value.get("final_checkpoint")
+    checkpoint = None
+    if checkpoint_value is not None:
+        checkpoint_value = require_object(checkpoint_value, "header final checkpoint")
+        checkpoint = {
+            "height": require_int(
+                checkpoint_value.get("height"), "header final checkpoint height"
+            ),
+            "hash": normalize_hash(
+                checkpoint_value.get("hash"), "header final checkpoint hash"
+            ),
+            "anchored": require_bool(
+                checkpoint_value.get("anchored"), "header final checkpoint anchor"
+            ),
+        }
+    historical_through = value.get("historical_script_assumption_through")
+    if historical_through is not None:
+        historical_through = require_int(
+            historical_through, "historical script assumption height"
+        )
+
+    return {
+        "height": height,
+        "block_hash": block_hash,
+        "next_height": next_height,
+        "deployments": deployments,
+        "script_flags": require_int(value.get("script_flags"), "script flags"),
+        "lock_flags": require_int(value.get("lock_flags"), "lock flags"),
+        "name_flags": require_int(value.get("name_flags"), "name flags"),
+        "has_airstop": require_bool(value.get("has_airstop"), "airstop flag"),
+        "next_block_version": require_int(
+            value.get("next_block_version"), "next block version"
+        ),
+        "final_checkpoint": checkpoint,
+        "historical_script_assumption_through": historical_through,
+    }
+
+
 def extract_hsd_info(info: dict[str, Any]) -> dict[str, Any]:
     network = require_string(info.get("network"), "HSD network")
     chain = require_object(info.get("chain"), "HSD chain info")
@@ -316,6 +400,98 @@ def extract_hsd_info(info: dict[str, Any]) -> dict[str, Any]:
             require_object(chain.get("options"), "HSD chain options").get("prune"),
             "HSD prune flag",
         ),
+    }
+
+
+def extract_hsd_blockchain_info(value: dict[str, Any]) -> dict[str, Any]:
+    height = require_int(value.get("blocks"), "HSD blockchain height")
+    if require_int(value.get("headers"), "HSD blockchain header height") != height:
+        raise ProbeError("HSD block and header heights disagree")
+    raw_forks = require_object(value.get("softforks"), "HSD softforks")
+    deployments: dict[str, dict[str, Any]] = {}
+    for name, raw in raw_forks.items():
+        if not isinstance(name, str) or not name:
+            raise ProbeError("HSD softfork name is invalid")
+        item = require_object(raw, f"HSD softfork {name}")
+        state = require_string(item.get("status"), f"HSD softfork {name} state")
+        if state not in {"defined", "started", "locked_in", "active", "failed"}:
+            raise ProbeError(f"HSD softfork {name} has unknown state {state!r}")
+        bit = require_int(item.get("bit"), f"HSD softfork {name} bit")
+        if bit > 31:
+            raise ProbeError(f"HSD softfork {name} bit exceeds 31")
+        deployments[name] = {
+            "state": state,
+            "bit": bit,
+            "start_time": require_int(
+                item.get("startTime"), f"HSD softfork {name} start time"
+            ),
+            "timeout": require_int(
+                item.get("timeout"), f"HSD softfork {name} timeout"
+            ),
+        }
+    return {
+        "height": height,
+        "block_hash": normalize_hash(
+            value.get("bestblockhash"), "HSD blockchain tip hash"
+        ),
+        "deployments": deployments,
+        "pruned": require_bool(value.get("pruned"), "HSD blockchain prune flag"),
+    }
+
+
+def compare_header_deployments(
+    hsrd: dict[str, Any], hsd: dict[str, Any]
+) -> dict[str, Any]:
+    parameters_match = set(hsrd["deployments"]) == set(hsd["deployments"])
+    states_match = parameters_match
+    if parameters_match:
+        for name, actual in hsrd["deployments"].items():
+            expected = hsd["deployments"][name]
+            parameters_match = parameters_match and all(
+                actual[field] == expected[field]
+                for field in ("bit", "start_time", "timeout")
+            )
+            states_match = states_match and actual["state"] == expected["state"]
+
+    expected_version = 0
+    for deployment in hsd["deployments"].values():
+        if deployment["state"] in {"started", "locked_in"}:
+            expected_version |= 1 << deployment["bit"]
+    expected_name_flags = 0
+    if hsd["deployments"].get("hardening", {}).get("state") == "active":
+        expected_name_flags |= 1
+    if hsd["deployments"].get("icannlockup", {}).get("state") == "active":
+        expected_name_flags |= 2
+    expected_airstop = (
+        hsd["deployments"].get("airstop", {}).get("state") == "active"
+    )
+    effects_match = (
+        hsrd["script_flags"] == HSD_MANDATORY_SCRIPT_FLAGS
+        and hsrd["lock_flags"] == HSD_DEPLOYMENT_LOCK_FLAGS
+        and hsrd["name_flags"] == expected_name_flags
+        and hsrd["has_airstop"] == expected_airstop
+        and hsrd["next_block_version"] == expected_version
+    )
+    checkpoint = hsrd["final_checkpoint"]
+    checkpoint_anchored = checkpoint is None or (
+        hsrd["height"] < checkpoint["height"]
+        or (
+            checkpoint["anchored"]
+            and hsrd["historical_script_assumption_through"] == checkpoint["height"]
+            and hsd.get("final_checkpoint_hash") == checkpoint["hash"]
+        )
+    )
+    return {
+        "matched": parameters_match
+        and states_match
+        and effects_match
+        and checkpoint_anchored,
+        "parameters_matched": parameters_match,
+        "states_matched": states_match,
+        "effects_matched": effects_match,
+        "checkpoint_anchored": checkpoint_anchored,
+        "hsrd": hsrd,
+        "hsd": hsd,
     }
 
 
@@ -475,12 +651,28 @@ def probe_once(
 def probe_header_once(hsrd_url: str, cli: HsdCli, timeout: float) -> dict[str, Any]:
     status_url = f"{hsrd_url}/api/v1/status"
     shadow_url = f"{hsrd_url}/api/v1/shadow-sync"
+    deployments_url = f"{hsrd_url}/api/v1/header-deployments"
     hsrd_before = extract_hsrd_header(
         read_http_json(status_url, timeout),
         read_http_json(shadow_url, timeout),
     )
+    hsrd_deployments_before = extract_hsrd_header_deployments(
+        read_http_json(deployments_url, timeout)
+    )
+    if (
+        hsrd_deployments_before["height"] != hsrd_before["height"]
+        or hsrd_deployments_before["block_hash"] != hsrd_before["block_hash"]
+    ):
+        raise ProbeError("hsrd header and deployment diagnostics are not one snapshot")
     hsd_before = extract_hsd_info(cli.info())
     hsd_before["source_revision"] = cli.source_revision
+    hsd_chain_before = extract_hsd_blockchain_info(cli.blockchain_info())
+    if (
+        hsd_chain_before["height"] != hsd_before["height"]
+        or hsd_chain_before["block_hash"] != hsd_before["tip"]
+        or hsd_chain_before["pruned"] != hsd_before["pruned"]
+    ):
+        raise ProbeError("HSD info and blockchain RPC are not one snapshot")
     if cli.source_revision != hsrd_before["oracle_revision"]:
         raise ProbeError(
             "pinned HSD source revision does not match hsrd's expected oracle revision"
@@ -492,24 +684,58 @@ def probe_header_once(hsrd_url: str, cli: HsdCli, timeout: float) -> dict[str, A
         )
 
     canonical_hash = cli.block_hash(hsrd_before["height"])
+    hsd_deployment_view = dict(hsd_chain_before)
+    final_checkpoint = hsrd_deployments_before["final_checkpoint"]
+    if final_checkpoint is not None and hsd_before["height"] >= final_checkpoint["height"]:
+        hsd_deployment_view["final_checkpoint_hash"] = cli.block_hash(
+            final_checkpoint["height"]
+        )
     hsd_after = extract_hsd_info(cli.info())
     hsd_after["source_revision"] = cli.source_revision
     if hsd_after != hsd_before:
         raise ProbeError("HSD tip changed during the header comparison probe")
+    hsd_chain_after = extract_hsd_blockchain_info(cli.blockchain_info())
+    if hsd_chain_after != hsd_chain_before:
+        raise ProbeError("HSD deployment state changed during the header comparison probe")
     hsrd_after = extract_hsrd_header(
         read_http_json(status_url, timeout),
         read_http_json(shadow_url, timeout),
     )
     if hsrd_after != hsrd_before:
         raise ProbeError("hsrd best header changed during the header comparison probe")
+    hsrd_deployments_after = extract_hsrd_header_deployments(
+        read_http_json(deployments_url, timeout)
+    )
+    if hsrd_deployments_after != hsrd_deployments_before:
+        raise ProbeError("hsrd header deployment state changed during the comparison probe")
 
-    matched = hsrd_before["block_hash"] == canonical_hash
+    caught_up = hsrd_before["height"] == hsd_before["height"]
+    deployment_comparison = (
+        compare_header_deployments(hsrd_deployments_before, hsd_deployment_view)
+        if caught_up
+        else None
+    )
+    header_matched = hsrd_before["block_hash"] == canonical_hash
     return {
         "schema_version": SCHEMA_VERSION,
         "mode": "header-sync",
         "observed_at": int(time.time()),
-        "matched": matched,
-        "caught_up": hsrd_before["height"] == hsd_before["height"],
+        "matched": header_matched
+        and (deployment_comparison is None or deployment_comparison["matched"]),
+        "header_matched": header_matched,
+        "deployment_parameters_matched": (
+            None if deployment_comparison is None else deployment_comparison["parameters_matched"]
+        ),
+        "deployment_states_matched": (
+            None if deployment_comparison is None else deployment_comparison["states_matched"]
+        ),
+        "deployment_effects_matched": (
+            None if deployment_comparison is None else deployment_comparison["effects_matched"]
+        ),
+        "checkpoint_anchored": (
+            None if deployment_comparison is None else deployment_comparison["checkpoint_anchored"]
+        ),
+        "caught_up": caught_up,
         "network": hsrd_before["network"],
         "height": hsrd_before["height"],
         "block_hash": hsrd_before["block_hash"],
@@ -524,7 +750,12 @@ def probe_header_once(hsrd_url: str, cli: HsdCli, timeout: float) -> dict[str, A
         "hsd_tip_height": hsd_before["height"],
         "hsd_tip_hash": hsd_before["tip"],
         "hsd_pruned": hsd_before["pruned"],
-        "scope": "headers-difficulty-time-checkpoints-chainwork-ancestry",
+        "header_deployments": hsrd_deployments_before,
+        "hsd_softforks": hsd_chain_before["deployments"],
+        "scope": (
+            "headers-difficulty-time-checkpoints-chainwork-ancestry-"
+            "deployments-script-policy"
+        ),
     }
 
 
@@ -829,6 +1060,90 @@ def self_test() -> None:
     assert header_extracted["height"] == 101
     assert header_extracted["block_hash"] == marker(4)
     assert header_extracted["received_headers"] == 100
+
+    header_deployments = extract_hsrd_header_deployments(
+        {
+            "best_header": {"hash": [4] * 32, "height": 101, "chainwork": [5] * 32},
+            "next_height": 102,
+            "deployments": [
+                {
+                    "name": "hardening",
+                    "state": "FAILED",
+                    "bit": 0,
+                    "start_time": 1,
+                    "timeout": 2,
+                },
+                {
+                    "name": "icannlockup",
+                    "state": "ACTIVE",
+                    "bit": 1,
+                    "start_time": 3,
+                    "timeout": 4,
+                },
+                {
+                    "name": "airstop",
+                    "state": "ACTIVE",
+                    "bit": 2,
+                    "start_time": 5,
+                    "timeout": 6,
+                },
+            ],
+            "script_flags": 50,
+            "lock_flags": 0,
+            "name_flags": 2,
+            "has_airstop": True,
+            "next_block_version": 0,
+            "final_checkpoint": {
+                "height": 100,
+                "hash": [6] * 32,
+                "anchored": True,
+            },
+            "historical_script_assumption_through": 100,
+        }
+    )
+    hsd_deployments = extract_hsd_blockchain_info(
+        {
+            "blocks": 101,
+            "headers": 101,
+            "bestblockhash": marker(4),
+            "pruned": True,
+            "softforks": {
+                "hardening": {
+                    "status": "failed",
+                    "bit": 0,
+                    "startTime": 1,
+                    "timeout": 2,
+                },
+                "icannlockup": {
+                    "status": "active",
+                    "bit": 1,
+                    "startTime": 3,
+                    "timeout": 4,
+                },
+                "airstop": {
+                    "status": "active",
+                    "bit": 2,
+                    "startTime": 5,
+                    "timeout": 6,
+                },
+            },
+        }
+    )
+    hsd_deployments["final_checkpoint_hash"] = marker(6)
+    deployment_comparison = compare_header_deployments(
+        header_deployments, hsd_deployments
+    )
+    assert deployment_comparison["matched"]
+    mismatched_deployments = dict(header_deployments)
+    mismatched_deployments["script_flags"] = 0
+    assert not compare_header_deployments(
+        mismatched_deployments, hsd_deployments
+    )["matched"]
+    mismatched_checkpoint = dict(hsd_deployments)
+    mismatched_checkpoint["final_checkpoint_hash"] = marker(7)
+    assert not compare_header_deployments(
+        header_deployments, mismatched_checkpoint
+    )["checkpoint_anchored"]
 
     hsrd = {
         "api_version": MINIMUM_HSRD_API_VERSION,

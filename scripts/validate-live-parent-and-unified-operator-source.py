@@ -33,6 +33,15 @@ files = {
         'GetParentAuthority', 'getparentauthority',
         'parent_authority_is_one_coherent_snapshot',
     ],
+    'crates/meshmine-hsrd-bridge/src/lib.rs': [
+        'AuthoritativeHsrdMiningStream', 'subscribe_mining_events',
+        'HsrdGatewayActivationRequest', 'activate_gateway_job',
+        'gateway.durable_store()', 'reconcile_authoritative_tip',
+        'HsrdGatewayTipReconciliation', 'borrow_and_update',
+        'AuthorityStreamClosed', 'StaleAuthority',
+        'exact_native_job_is_durably_bound_and_activated_idempotently',
+        'authoritative_tip_reconciliation_retires_stale_asic_work',
+    ],
     'bins/meshmine-cored/src/main.rs': [
         'parent_oracle_file', 'load_parent_oracle', 'ensure_active_parent',
         'active_parent_qualification', 'pending_parent_qualification',
@@ -122,6 +131,9 @@ if 'meshmine-parent-oracle' not in packages:
     raise SystemExit('Cargo.lock omits meshmine-parent-oracle')
 if 'meshmine-parent-oracle' not in packages['meshmine-cored'].get('dependencies', []):
     raise SystemExit('meshmine-cored lock entry omits meshmine-parent-oracle')
+for dependency in ('hns-node', 'meshmine-gateway', 'meshmine-handoff'):
+    if dependency not in packages['meshmine-hsrd-bridge'].get('dependencies', []):
+        raise SystemExit(f'meshmine-hsrd-bridge lock entry omits {dependency}')
 if 'meshmine-service' not in packages['meshmine-corelink-operatord'].get('dependencies', []):
     raise SystemExit('unified operator lock entry omits meshmine-service')
 if 'tokio' not in packages['meshmine-corelink-operatord'].get('dependencies', []):

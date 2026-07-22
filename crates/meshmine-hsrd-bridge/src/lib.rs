@@ -5,15 +5,25 @@
 
 #![forbid(unsafe_code)]
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use hns_consensus::block_weight;
-use hns_mining::{MiningJobId, MiningSnapshot, PreparedMiningJob, SolvedMiningCandidate};
+use hns_mining::{
+    MiningJobId, MiningSnapshot, MiningSubscriptions, PreparedMiningJob, SolvedMiningCandidate,
+};
+use hns_node::NodeService;
 use hns_primitives::{Block, Header, NONCE_SIZE};
 use meshmine_fast_path::{BlockPublicationIntentV1, PublicationError};
 use meshmine_gateway::{
-    GatewayError, GatewayJob, gateway_assignment_job_id, handy_target_from_difficulty,
+    AuthorizedGatewayJobRequest, Gateway, GatewayError, GatewayJob, PreviousJobTransition,
+    gateway_assignment_job_id, handy_target_from_difficulty,
 };
+use meshmine_handoff::GatewayContextManifestV1;
 use meshmine_storage::{DurableStore, StorageError};
-use meshmine_types::{BlockBodyPackageV2, GatewayAssignmentV1, MaskSessionV2, UnsignedObject};
+use meshmine_types::{
+    BlockBodyPackageV2, BodyAvailabilityCertificateV2, BodyErasureDescriptorV2,
+    GatewayAssignmentV1, MaskSessionV2, UnsignedObject,
+};
 use thiserror::Error;
 
 pub const HSRD_ASSIGNMENT_BINDING_NAMESPACE: &str = "hsrd-assignment-binding/v1";
@@ -247,11 +257,19 @@ pub fn admit_persisted_opened_solution(
 pub fn publication_intent_for_persisted_candidate(
     store: &dyn DurableStore,
     bound: &HsrdBoundGatewayJob,
+    authoritative_snapshot: &MiningSnapshot,
     candidate: &SolvedMiningCandidate,
     winner_share_id: [u8; 32],
     target_ids: Vec<String>,
 ) -> Result<BlockPublicationIntentV1, HsrdBridgeError> {
     verify_persisted_bound_gateway_job(store, bound)?;
+    if authoritative_snapshot.network_id != bound.network_id
+        || authoritative_snapshot.generation != bound.mining_generation
+        || authoritative_snapshot.tip.hash.as_bytes() != &bound.parent_hash
+        || authoritative_snapshot.tip.height != bound.parent_height
+    {
+        return Err(HsrdBridgeError::StaleAuthority);
+    }
     if winner_share_id == [0; 32]
         || candidate.job_id() != bound.hsrd_job_id
         || candidate.snapshot_generation() != bound.mining_generation
@@ -270,6 +288,256 @@ pub fn publication_intent_for_persisted_candidate(
         target_ids,
     )
     .map_err(HsrdBridgeError::Publication)
+}
+
+/// Complete the only supported native-template activation transaction.
+///
+/// The generation/job binding is persisted in the gateway's own durable store
+/// before the gateway's atomic assignment activation, so a process interruption
+/// is recovered by replaying this exact request. The bridge never creates or
+/// signs operator/committee authority objects.
+pub struct HsrdGatewayActivationRequest<'a> {
+    pub prepared_job: &'a PreparedMiningJob,
+    pub manifest: &'a GatewayContextManifestV1,
+    pub assignment: &'a GatewayAssignmentV1,
+    pub session: &'a MaskSessionV2,
+    pub body: &'a BlockBodyPackageV2,
+    pub descriptor: &'a BodyErasureDescriptorV2,
+    pub body_certificate: &'a BodyAvailabilityCertificateV2,
+    pub advertised_difficulty: u32,
+    pub transition: Option<PreviousJobTransition>,
+}
+
+fn activate_gateway_job(
+    gateway: &mut Gateway,
+    snapshot: &MiningSnapshot,
+    request: HsrdGatewayActivationRequest<'_>,
+) -> Result<HsrdBoundGatewayJob, HsrdBridgeError> {
+    let HsrdGatewayActivationRequest {
+        prepared_job,
+        manifest,
+        assignment,
+        session,
+        body,
+        descriptor,
+        body_certificate,
+        advertised_difficulty,
+        transition,
+    } = request;
+    let store = gateway.durable_store();
+    let bound = bind_gateway_job(HsrdGatewayJobRequest {
+        snapshot,
+        prepared_job,
+        assignment,
+        session,
+        body,
+        advertised_difficulty,
+    })?;
+    persist_bound_gateway_job(store.as_ref(), &bound)?;
+    let sequence = gateway.issue_authorized_job(AuthorizedGatewayJobRequest {
+        manifest,
+        assignment,
+        session,
+        body,
+        descriptor,
+        body_certificate,
+        job: bound.gateway_job.clone(),
+        transition,
+    })?;
+    let current = gateway
+        .current_job()
+        .ok_or(HsrdBridgeError::ActivationInvariant)?;
+    if sequence != assignment.assignment_sequence
+        || current.assignment_sequence != sequence
+        || current.id != bound.gateway_job.id
+        || current.previous_block != bound.parent_hash
+    {
+        return Err(HsrdBridgeError::ActivationInvariant);
+    }
+    verify_persisted_bound_gateway_job(store.as_ref(), &bound)?;
+    Ok(bound)
+}
+
+/// An `hsrd` mining stream which can only be constructed through the node's
+/// authority-permit boundary. The staged/observed subscription API cannot
+/// construct this type.
+#[derive(Debug)]
+pub struct AuthoritativeHsrdMiningStream {
+    subscriptions: MiningSubscriptions,
+    initial_pending: bool,
+}
+
+impl AuthoritativeHsrdMiningStream {
+    pub fn subscribe(node: &NodeService) -> Result<Self, HsrdBridgeError> {
+        let subscriptions = node
+            .subscribe_mining_events()
+            .map_err(|error| HsrdBridgeError::AuthoritySubscription(error.to_string()))?;
+        Ok(Self {
+            subscriptions,
+            initial_pending: true,
+        })
+    }
+
+    /// Activate an exact prepared job against the latest authoritative
+    /// snapshot. A concurrent tip change is reconciled before this method
+    /// returns; subsequent changes are consumed with `reconcile_next`.
+    pub fn activate(
+        &mut self,
+        gateway: &mut Gateway,
+        request: HsrdGatewayActivationRequest<'_>,
+    ) -> Result<HsrdBoundGatewayJob, HsrdBridgeError> {
+        let snapshot = self
+            .subscriptions
+            .latest_snapshot
+            .borrow_and_update()
+            .clone()
+            .ok_or(HsrdBridgeError::AuthorityUnavailable)?;
+        self.initial_pending = false;
+        let bound = activate_gateway_job(gateway, snapshot.as_ref(), request)?;
+
+        match self.subscriptions.latest_snapshot.has_changed() {
+            Ok(false) => Ok(bound),
+            Ok(true) => {
+                let latest = self
+                    .subscriptions
+                    .latest_snapshot
+                    .borrow_and_update()
+                    .clone();
+                let outcome = reconcile_authoritative_tip(
+                    gateway,
+                    latest.as_deref(),
+                    current_unix_time_ms()?,
+                )?;
+                if matches!(
+                    outcome,
+                    HsrdGatewayTipReconciliation::Current {
+                        assignment_id,
+                        mining_generation,
+                    } if assignment_id == bound.assignment_id
+                        && mining_generation == bound.mining_generation
+                ) {
+                    Ok(bound)
+                } else {
+                    Err(HsrdBridgeError::StaleAuthority)
+                }
+            }
+            Err(_) => {
+                reconcile_authoritative_tip(gateway, None, current_unix_time_ms()?)?;
+                Err(HsrdBridgeError::AuthorityStreamClosed)
+            }
+        }
+    }
+
+    /// Reconcile the current gateway head immediately, including the initial
+    /// watch value and restart-recovered gateway state.
+    pub fn reconcile_current_at(
+        &mut self,
+        gateway: &mut Gateway,
+        observed_at_ms: u64,
+    ) -> Result<HsrdGatewayTipReconciliation, HsrdBridgeError> {
+        let snapshot = self
+            .subscriptions
+            .latest_snapshot
+            .borrow_and_update()
+            .clone();
+        self.initial_pending = false;
+        reconcile_authoritative_tip(gateway, snapshot.as_deref(), observed_at_ms)
+    }
+
+    /// Wait for the next authoritative tip update and immediately retire any
+    /// now-stale ASIC job. The watch channel provides the latest value even if
+    /// the diagnostic broadcast stream lagged.
+    pub async fn reconcile_next(
+        &mut self,
+        gateway: &mut Gateway,
+    ) -> Result<HsrdGatewayTipReconciliation, HsrdBridgeError> {
+        if self.initial_pending {
+            return self.reconcile_current_at(gateway, current_unix_time_ms()?);
+        }
+        if self.subscriptions.latest_snapshot.changed().await.is_err() {
+            reconcile_authoritative_tip(gateway, None, current_unix_time_ms()?)?;
+            return Err(HsrdBridgeError::AuthorityStreamClosed);
+        }
+        self.reconcile_current_at(gateway, current_unix_time_ms()?)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HsrdGatewayTipReconciliation {
+    Idle,
+    Current {
+        assignment_id: [u8; 32],
+        mining_generation: u64,
+    },
+    Retired {
+        assignment_id: [u8; 32],
+        mining_generation: u64,
+        credit_cutoff_ms: u64,
+    },
+}
+
+/// Reconcile the durable gateway head against the latest snapshot from
+/// `NodeService::subscribe_mining_events`, including after process restart.
+/// Passing `None` represents loss of authoritative mining state and retires
+/// any active ASIC job. Diagnostic/observed snapshots must never be supplied.
+fn reconcile_authoritative_tip(
+    gateway: &mut Gateway,
+    authoritative_snapshot: Option<&MiningSnapshot>,
+    observed_at_ms: u64,
+) -> Result<HsrdGatewayTipReconciliation, HsrdBridgeError> {
+    let store = gateway.durable_store();
+    gateway.close_expired(observed_at_ms)?;
+    let Some(job) = gateway.current_job().cloned() else {
+        return Ok(HsrdGatewayTipReconciliation::Idle);
+    };
+    let assignment_id = assignment_id_from_gateway_job(&job)?;
+    let binding = load_bound_gateway_job(store.as_ref(), assignment_id)?;
+    if binding.parent_hash != job.previous_block || job.assignment_sequence == 0 {
+        return Err(HsrdBridgeError::ActivationInvariant);
+    }
+
+    let current = authoritative_snapshot.is_some_and(|snapshot| {
+        snapshot.network_id == binding.network_id
+            && snapshot.generation == binding.mining_generation
+            && snapshot.tip.hash.as_bytes() == &binding.parent_hash
+            && snapshot.tip.height == binding.parent_height
+    });
+    if current {
+        return Ok(HsrdGatewayTipReconciliation::Current {
+            assignment_id,
+            mining_generation: binding.mining_generation,
+        });
+    }
+
+    let credit_cutoff_ms = observed_at_ms.max(job.issued_ms).min(job.submission_end_ms);
+    gateway.cancel_job(&job.id, credit_cutoff_ms, job.submission_end_ms)?;
+    Ok(HsrdGatewayTipReconciliation::Retired {
+        assignment_id,
+        mining_generation: binding.mining_generation,
+        credit_cutoff_ms,
+    })
+}
+
+fn current_unix_time_ms() -> Result<u64, HsrdBridgeError> {
+    let milliseconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| HsrdBridgeError::Clock)?
+        .as_millis();
+    u64::try_from(milliseconds).map_err(|_| HsrdBridgeError::Clock)
+}
+
+fn assignment_id_from_gateway_job(job: &GatewayJob) -> Result<[u8; 32], HsrdBridgeError> {
+    if job.id.len() != 64 || !job.id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(HsrdBridgeError::ActivationInvariant);
+    }
+    let bytes = hex::decode(&job.id).map_err(|_| HsrdBridgeError::ActivationInvariant)?;
+    let assignment_id = bytes
+        .try_into()
+        .map_err(|_| HsrdBridgeError::ActivationInvariant)?;
+    if hex::encode(assignment_id) != job.id {
+        return Err(HsrdBridgeError::ActivationInvariant);
+    }
+    Ok(assignment_id)
 }
 
 pub struct HsrdGatewayJobRequest<'a> {
@@ -431,6 +699,18 @@ pub enum HsrdBridgeError {
     DurableBindingConflict,
     #[error("durable hsrd assignment binding storage failed: {0}")]
     Storage(#[from] StorageError),
+    #[error("gateway activation disagrees with its durable hsrd binding")]
+    ActivationInvariant,
+    #[error("solved candidate is stale for the current authoritative hsrd tip")]
+    StaleAuthority,
+    #[error("authoritative hsrd mining subscription is unavailable: {0}")]
+    AuthoritySubscription(String),
+    #[error("authoritative hsrd mining state is unavailable")]
+    AuthorityUnavailable,
+    #[error("authoritative hsrd mining event stream closed")]
+    AuthorityStreamClosed,
+    #[error("system clock cannot represent a gateway timestamp")]
+    Clock,
     #[error("opened gateway result is not a valid generation-bound hsrd block candidate")]
     Candidate,
     #[error("candidate publication intent is invalid: {0}")]
@@ -442,13 +722,15 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use ed25519_dalek::SigningKey;
     use hns_consensus::{Network, block_merkle_root, block_weight, block_witness_root};
-    use hns_mining::{HeaderSummary, MiningHeaderTemplate};
+    use hns_mining::{HeaderSummary, MiningEventHub, MiningHeaderTemplate};
     use hns_primitives::{
         Address, BlockHash, Covenant, CovenantKind, Input, Outpoint, Output, Transaction, Txid,
         Witness, blake2b_256_many,
     };
-    use meshmine_gateway::handy_target_from_difficulty;
+    use meshmine_crypto::sign_object;
+    use meshmine_gateway::{Gateway, TelemetryLevel, handy_target_from_difficulty};
     use meshmine_hns::derive_capture_parameters;
     use meshmine_storage::{DurableStore, MemoryStore};
     use meshmine_types::{
@@ -459,13 +741,44 @@ mod tests {
     struct Fixture {
         snapshot: MiningSnapshot,
         prepared: PreparedMiningJob,
+        manifest: GatewayContextManifestV1,
         assignment: GatewayAssignmentV1,
         session: MaskSessionV2,
         body: BlockBodyPackageV2,
+        descriptor: BodyErasureDescriptorV2,
+        body_certificate: BodyAvailabilityCertificateV2,
     }
 
     fn fixture() -> Fixture {
+        fixture_with_target(0x2000_ffff, 7)
+    }
+
+    fn gateway_fixture() -> Fixture {
+        fixture_with_target(0x1c00_ffff, 7)
+    }
+
+    fn fixture_with_target(bits: u32, blind_band_bits_d: u16) -> Fixture {
         let network_id = Network::Regtest.canonical_id();
+        let operator = SigningKey::from_bytes(&[41; 32]);
+        let operator_pubkey = operator.verifying_key().to_bytes();
+        let gateway_pubkey = SigningKey::from_bytes(&[42; 32]).verifying_key().to_bytes();
+        let core_handoff_pubkey = SigningKey::from_bytes(&[43; 32]).verifying_key().to_bytes();
+        let mut manifest = GatewayContextManifestV1 {
+            core_protocol_version: CORE_V2,
+            handoff_version: GATEWAY_HANDOFF_V1,
+            network_id,
+            context_sequence: 1,
+            previous_manifest_id: [0; 32],
+            operator_pubkey,
+            gateway_pubkey,
+            core_handoff_pubkey,
+            valid_from_ms: 1,
+            valid_until_ms: 10_000,
+            maximum_frame_bytes: 64 * 1024,
+            maximum_in_flight: 32,
+            operator_signature: SignatureBytes::empty(),
+        };
+        manifest.operator_signature = sign_object(&operator, network_id, &manifest);
         let parent_hash = [1; 32];
         let snapshot = MiningSnapshot {
             network_id,
@@ -518,7 +831,7 @@ mod tests {
             witness_root,
             merkle_root,
             version: 1,
-            bits: 0x2000_ffff,
+            bits,
             minimum_time: 101,
             mask_hash,
         };
@@ -528,7 +841,7 @@ mod tests {
             network_id,
             hns_parent_hash: parent_hash,
             hns_parent_height: snapshot.tip.height,
-            operator_pubkey: [10; 32],
+            operator_pubkey,
             operator_fee_bucket_id: [11; 32],
             payout_snapshot_id: [12; 32],
             payout_plan_id: [13; 32],
@@ -556,7 +869,7 @@ mod tests {
             },
             transactions: prepared.transactions().to_vec(),
         };
-        let body = BlockBodyPackageV2 {
+        let mut body = BlockBodyPackageV2 {
             protocol_version: CORE_V2,
             network_id,
             template_core,
@@ -578,7 +891,31 @@ mod tests {
             hsd_validation_result_hash: [15; 32],
             operator_signature: SignatureBytes::empty(),
         };
-        let capture = derive_capture_parameters(header.bits, 7).unwrap();
+        body.operator_signature = sign_object(&operator, network_id, &body);
+        let descriptor = BodyErasureDescriptorV2 {
+            protocol_version: CORE_V2,
+            network_id,
+            body_package_id: body.object_id(),
+            original_size: 1,
+            data_shards: 1,
+            parity_shards: 1,
+            shard_size: 1,
+            shard_merkle_root: [20; 32],
+            expiry_height: 200,
+            compression: 0,
+        };
+        let body_certificate = BodyAvailabilityCertificateV2 {
+            protocol_version: CORE_V2,
+            network_id,
+            descriptor_id: descriptor.object_id(),
+            parent_hash,
+            parent_height: snapshot.tip.height,
+            hsd_validation_result_hash: body.hsd_validation_result_hash,
+            challenge_round: 1,
+            challenge_transcript_root: [21; 32],
+            signer_set: SignatureSet::empty_ed25519(),
+        };
+        let capture = derive_capture_parameters(header.bits, blind_band_bits_d).unwrap();
         let session = MaskSessionV2 {
             protocol_version: CORE_V2,
             network_id,
@@ -590,7 +927,7 @@ mod tests {
             capture_target: U256(capture.capture_target),
             accounting_target: U256(capture.capture_target),
             leading_zero_prefix_q: capture.leading_zero_prefix_q,
-            blind_band_bits_d: 7,
+            blind_band_bits_d,
             mask_hash,
             mask_commitment_root: [18; 32],
             mask_committee_id: [19; 32],
@@ -602,16 +939,16 @@ mod tests {
             previous_session_id: [0; 32],
             signer_set: SignatureSet::empty_ed25519(),
         };
-        let assignment = GatewayAssignmentV1 {
+        let mut assignment = GatewayAssignmentV1 {
             core_protocol_version: CORE_V2,
             handoff_version: GATEWAY_HANDOFF_V1,
             network_id,
             session_id: session.object_id(),
             body_package_id: body.object_id(),
-            body_certificate_id: [20; 32],
-            operator_pubkey: [10; 32],
-            gateway_pubkey: [21; 32],
-            core_handoff_pubkey: [22; 32],
+            body_certificate_id: body_certificate.object_id(),
+            operator_pubkey,
+            gateway_pubkey,
+            core_handoff_pubkey,
             worker_id_hash: [23; 32],
             payout_bucket_id: [24; 32],
             assignment_sequence: 1,
@@ -627,15 +964,19 @@ mod tests {
             nonce_stride: 1,
             edge_target: U256(handy_target_from_difficulty(1).unwrap()),
             capture_target: session.capture_target,
-            telemetry_level: 0,
+            telemetry_level: TelemetryLevel::StockAsic as u8,
             operator_signature: SignatureBytes::empty(),
         };
+        assignment.operator_signature = sign_object(&operator, network_id, &assignment);
         Fixture {
             snapshot,
             prepared,
+            manifest,
             assignment,
             session,
             body,
+            descriptor,
+            body_certificate,
         }
     }
 
@@ -648,6 +989,38 @@ mod tests {
             body: &fixture.body,
             advertised_difficulty: 1,
         })
+    }
+
+    fn activate(
+        fixture: &Fixture,
+        stream: &mut AuthoritativeHsrdMiningStream,
+        gateway: &mut Gateway,
+    ) -> Result<HsrdBoundGatewayJob, HsrdBridgeError> {
+        stream.activate(
+            gateway,
+            HsrdGatewayActivationRequest {
+                prepared_job: &fixture.prepared,
+                manifest: &fixture.manifest,
+                assignment: &fixture.assignment,
+                session: &fixture.session,
+                body: &fixture.body,
+                descriptor: &fixture.descriptor,
+                body_certificate: &fixture.body_certificate,
+                advertised_difficulty: 1,
+                transition: None,
+            },
+        )
+    }
+
+    fn authoritative_stream(
+        snapshot: &MiningSnapshot,
+    ) -> (MiningEventHub, AuthoritativeHsrdMiningStream) {
+        let hub = MiningEventHub::new(Some(Arc::new(snapshot.clone()))).unwrap();
+        let stream = AuthoritativeHsrdMiningStream {
+            subscriptions: hub.subscribe(),
+            initial_pending: true,
+        };
+        (hub, stream)
     }
 
     #[test]
@@ -702,6 +1075,65 @@ mod tests {
             bind(&wrong_weight),
             Err(HsrdBridgeError::BlockWeight)
         ));
+    }
+
+    #[test]
+    fn exact_native_job_is_durably_bound_and_activated_idempotently() {
+        let fixture = gateway_fixture();
+        let store = Arc::new(MemoryStore::default());
+        let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
+        let (_hub, mut stream) = authoritative_stream(&fixture.snapshot);
+
+        let bound = activate(&fixture, &mut stream, &mut gateway).unwrap();
+        assert_eq!(
+            gateway.current_job().unwrap().id,
+            gateway_assignment_job_id(&fixture.assignment)
+        );
+        assert_eq!(
+            gateway.current_job().unwrap().assignment_sequence,
+            fixture.assignment.assignment_sequence
+        );
+        verify_persisted_bound_gateway_job(store.as_ref(), &bound).unwrap();
+
+        let replayed = activate(&fixture, &mut stream, &mut gateway).unwrap();
+        assert_eq!(replayed, bound);
+        assert_eq!(gateway.current_job().unwrap().assignment_sequence, 1);
+    }
+
+    #[test]
+    fn authoritative_tip_reconciliation_retires_stale_asic_work() {
+        let fixture = gateway_fixture();
+        let store = Arc::new(MemoryStore::default());
+        let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
+        let (hub, mut stream) = authoritative_stream(&fixture.snapshot);
+        let bound = activate(&fixture, &mut stream, &mut gateway).unwrap();
+
+        assert_eq!(
+            stream.reconcile_current_at(&mut gateway, 1_500).unwrap(),
+            HsrdGatewayTipReconciliation::Current {
+                assignment_id: bound.assignment_id(),
+                mining_generation: fixture.snapshot.generation,
+            }
+        );
+
+        let mut replacement_tip = fixture.snapshot.clone();
+        replacement_tip.generation += 1;
+        replacement_tip.tip.hash = BlockHash::new([30; 32]);
+        hub.tip_committed(Arc::new(replacement_tip)).unwrap();
+        assert_eq!(
+            stream.reconcile_current_at(&mut gateway, 1_500).unwrap(),
+            HsrdGatewayTipReconciliation::Retired {
+                assignment_id: bound.assignment_id(),
+                mining_generation: fixture.snapshot.generation,
+                credit_cutoff_ms: 1_500,
+            }
+        );
+        assert!(gateway.current_job().is_none());
+        hub.tip_cleared(fixture.snapshot.generation + 2).unwrap();
+        assert_eq!(
+            stream.reconcile_current_at(&mut gateway, 1_501).unwrap(),
+            HsrdGatewayTipReconciliation::Idle
+        );
     }
 
     #[test]
@@ -804,6 +1236,7 @@ mod tests {
         let intent = publication_intent_for_persisted_candidate(
             &store,
             &bound,
+            &fixture.snapshot,
             &candidate,
             [31; 32],
             vec!["remote-relay".to_owned(), "local-hsrd".to_owned()],
@@ -816,5 +1249,19 @@ mod tests {
             intent.target_ids,
             vec!["local-hsrd".to_owned(), "remote-relay".to_owned()]
         );
+
+        let mut stale = fixture.snapshot.clone();
+        stale.generation += 1;
+        assert!(matches!(
+            publication_intent_for_persisted_candidate(
+                &store,
+                &bound,
+                &stale,
+                &candidate,
+                [31; 32],
+                vec!["local-hsrd".to_owned()],
+            ),
+            Err(HsrdBridgeError::StaleAuthority)
+        ));
     }
 }

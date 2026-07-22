@@ -9,11 +9,17 @@ description = "Exact native hsrd-to-MeshMine mining authorization bridge"
 [dependencies]
 hns-consensus = { path = "../../hsrd/crates/hns-consensus" }
 hns-mining = { path = "../../hsrd/crates/hns-mining" }
+hns-node = { path = "../../hsrd/crates/hns-node", default-features = false }
 hns-primitives = { path = "../../hsrd/crates/hns-primitives" }
 meshmine-gateway = { path = "../meshmine-gateway" }
 meshmine-fast-path = { path = "../meshmine-fast-path" }
 meshmine-hns = { path = "../meshmine-hns" }
+meshmine-handoff = { path = "../meshmine-handoff" }
 meshmine-storage = { path = "../meshmine-storage" }
 meshmine-types = { path = "../meshmine-types" }
 hex.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+meshmine-crypto = { path = "../meshmine-crypto" }

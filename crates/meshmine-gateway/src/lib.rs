@@ -1443,6 +1443,13 @@ impl Gateway {
             .map(|(job, _)| job)
     }
 
+    /// Clone the exact durable-store handle backing this gateway. Cross-crate
+    /// activation protocols use this instead of accepting a second caller-
+    /// selected store which could split one assignment across two databases.
+    pub fn durable_store(&self) -> Arc<dyn DurableStore> {
+        Arc::clone(&self.store)
+    }
+
     pub fn transactions(&self, job_id: &str) -> Result<Vec<String>, GatewayError> {
         let (job, state) = self.jobs.get(job_id).ok_or(GatewayError::StaleJob)?;
         if *state == JobState::Closed {

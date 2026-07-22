@@ -13,6 +13,7 @@ const bio = require('bufio');
 const Block = require('hsd/lib/primitives/block');
 const Headers = require('hsd/lib/primitives/headers');
 const TX = require('hsd/lib/primitives/tx');
+const Claim = require('hsd/lib/primitives/claim');
 const AirdropProof = require('hsd/lib/primitives/airdropproof');
 const InvItem = require('hsd/lib/primitives/invitem');
 const {CompactBlock, TXRequest, TXResponse} = require('hsd/lib/net/bip152');
@@ -40,6 +41,15 @@ const AIRDROP_FIXTURE = path.resolve(
   'hsd',
   'airdrops',
   'codec-v1.json'
+);
+const CLAIM_HISTORY_FIXTURE = path.resolve(
+  __dirname,
+  '..',
+  'hsrd',
+  'fixtures',
+  'hsd',
+  'claims',
+  'mainnet-history-v1.json'
 );
 const WRITE = process.argv.includes('--write');
 const CHECK = process.argv.includes('--check') || !WRITE;
@@ -202,6 +212,9 @@ function buildFixture() {
   const airdrop = AirdropProof.decode(
     Buffer.from(airdropFixture.faucet.raw, 'hex')
   );
+  const claimFixture = JSON.parse(fs.readFileSync(CLAIM_HISTORY_FIXTURE, 'utf8'));
+  const claim = new Claim();
+  claim.blob = Buffer.from(claimFixture.block.claims[0].proofRaw, 'hex');
 
   const packetCases = [
     frameCase('version-main', 'main', version),
@@ -231,6 +244,7 @@ function buildFixture() {
     frameCase('cmpctblock-regtest', 'regtest', new packets.CmpctBlockPacket(compact.compact)),
     frameCase('getblocktxn-regtest', 'regtest', new packets.GetBlockTxnPacket(compact.request)),
     frameCase('blocktxn-regtest', 'regtest', new packets.BlockTxnPacket(compact.response)),
+    frameCase('claim-main', 'main', new packets.ClaimPacket(claim)),
     frameCase('airdrop-regtest', 'regtest', new packets.AirdropPacket(airdrop))
   ];
 
@@ -240,7 +254,7 @@ function buildFixture() {
     .map(([name, value]) => ({name, value}));
 
   return {
-    schema: 2,
+    schema: 3,
     oracle: {
       repository: 'handshake-org/hsd',
       revision: ORACLE_REVISION

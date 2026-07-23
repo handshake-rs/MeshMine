@@ -775,6 +775,7 @@ def validate_consensus_boundaries() -> None:
             "malformed_snapshot_pin_aborts_compaction_without_deleting_nodes",
             "failed_compaction_commit_preserves_all_nodes",
             "streaming_compaction_bounds_delete_batches_and_is_idempotent",
+            "streaming_compaction_process_exit_is_restart_safe",
         ),
         "durable name-tree proofs",
     )

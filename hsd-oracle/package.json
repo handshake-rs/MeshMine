@@ -46,7 +46,9 @@
     "hsrd-p2p-wire-fixtures": "node generate-hsrd-p2p-wire-fixtures.js --check",
     "generate-hsrd-p2p-wire-fixtures": "node generate-hsrd-p2p-wire-fixtures.js --write --check",
     "hsrd-mining-template-fixtures": "node generate-hsrd-mining-template-fixtures.js --check",
-    "generate-hsrd-mining-template-fixtures": "node generate-hsrd-mining-template-fixtures.js --write --check"
+    "generate-hsrd-mining-template-fixtures": "node generate-hsrd-mining-template-fixtures.js --write --check",
+    "hsrd-invalid-corpus": "node generate-hsrd-invalid-corpus.js --check",
+    "generate-hsrd-invalid-corpus": "node generate-hsrd-invalid-corpus.js --write --check"
   },
   "devDependencies": {
     "hsd": "github:handshake-org/hsd#698e252ebc7b5c1dd0a9587e342fdd153d020ae4"

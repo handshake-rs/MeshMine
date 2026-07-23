@@ -204,6 +204,7 @@ def validate_fixture_manifest() -> None:
         "name-policy-v1",
         "p2p-wire-v1",
         "mining-template-v1",
+        "invalid-noncontextual-v1",
         "mainnet-claim-history-v1",
         "mainnet-claim-replacements-v1",
         "name-transitions-v1",
@@ -444,6 +445,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-name-policy-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-p2p-wire-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-mining-template-fixtures.js",
+        ROOT / "hsd-oracle/generate-hsrd-invalid-corpus.js",
         ROOT / "hsrd/fixtures/hsd/scripts/sighash-v1.json",
         ROOT / "hsrd/fixtures/hsd/blocks/genesis-v1.json",
         ROOT / "hsrd/fixtures/hsd/airdrops/codec-v1.json",
@@ -459,6 +461,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsrd/fixtures/hsd/name-states/name-policy-v1.json",
         ROOT / "hsrd/fixtures/hsd/p2p/wire-v1.json",
         ROOT / "hsrd/fixtures/hsd/mining/template-v1.json",
+        ROOT / "hsrd/fixtures/hsd/chains/invalid-noncontextual-v1.json",
     ]
     for path in exact_revision_files:
         if HSD_REVISION not in read_text(path):

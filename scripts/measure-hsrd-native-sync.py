@@ -17,7 +17,7 @@ import urllib.request
 from typing import Any
 
 
-SCHEMA = 1
+SCHEMA = 2
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_AUTHORIZATION_BYTES = 4_096
 
@@ -145,6 +145,41 @@ def extract_sample(payload: dict[str, Any], elapsed: float) -> dict[str, Any]:
         "received_blocks": require_int(payload.get("received_blocks"), "received_blocks"),
         "stored_bodies": require_int(payload.get("stored_bodies"), "stored_bodies"),
         "connected_blocks": require_int(payload.get("connected_blocks"), "connected_blocks"),
+        "active_state_slices": require_int(
+            payload.get("active_state_slices"), "active_state_slices"
+        ),
+        "active_state_last_slice_blocks": require_int(
+            payload.get("active_state_last_slice_blocks"),
+            "active_state_last_slice_blocks",
+        ),
+        "active_state_last_slice_millis": require_int(
+            payload.get("active_state_last_slice_millis"),
+            "active_state_last_slice_millis",
+        ),
+        "active_state_max_slice_millis": require_int(
+            payload.get("active_state_max_slice_millis"),
+            "active_state_max_slice_millis",
+        ),
+        "active_state_last_planning_micros": require_int(
+            payload.get("active_state_last_planning_micros"),
+            "active_state_last_planning_micros",
+        ),
+        "active_state_last_commit_micros": require_int(
+            payload.get("active_state_last_commit_micros"),
+            "active_state_last_commit_micros",
+        ),
+        "active_state_last_post_commit_micros": require_int(
+            payload.get("active_state_last_post_commit_micros"),
+            "active_state_last_post_commit_micros",
+        ),
+        "peer_event_backlog": require_int(
+            payload.get("peer_event_backlog"), "peer_event_backlog"
+        ),
+        "validation_result_backlog": require_int(
+            payload.get("validation_result_backlog"), "validation_result_backlog"
+        ),
+        "pending_blocks": require_int(sync.get("pending_blocks"), "sync.pending_blocks"),
+        "inflight_blocks": require_int(sync.get("inflight_blocks"), "sync.inflight_blocks"),
         "tracked_blocks": require_int(sync.get("tracked_blocks"), "sync.tracked_blocks"),
         "failed_blocks": require_int(sync.get("failed_blocks"), "sync.failed_blocks"),
         "unavailable_blocks": require_int(
@@ -188,9 +223,17 @@ def summarize(samples: list[dict[str, Any]], interval: float) -> dict[str, Any]:
         "received_blocks",
         "stored_bodies",
         "connected_blocks",
+        "active_state_slices",
         "received_bytes",
     ]
     rates: dict[str, list[float]] = {field: [] for field in rate_fields}
+    observed_slice_millis: list[float] = []
+    observed_slice_phases: dict[str, list[float]] = {
+        "planning": [],
+        "state_commit": [],
+        "post_commit": [],
+    }
+    unobserved_slices = 0
     active_stall_intervals = 0
     for before, after in zip(samples, samples[1:]):
         elapsed = after["elapsed_seconds"] - before["elapsed_seconds"]
@@ -201,6 +244,19 @@ def summarize(samples: list[dict[str, Any]], interval: float) -> dict[str, Any]:
             if delta < 0:
                 raise MeasurementError(f"native-sync counter {field} regressed")
             rates[field].append(delta / elapsed)
+        slice_delta = after["active_state_slices"] - before["active_state_slices"]
+        if slice_delta > 0:
+            observed_slice_millis.append(float(after["active_state_last_slice_millis"]))
+            observed_slice_phases["planning"].append(
+                float(after["active_state_last_planning_micros"])
+            )
+            observed_slice_phases["state_commit"].append(
+                float(after["active_state_last_commit_micros"])
+            )
+            observed_slice_phases["post_commit"].append(
+                float(after["active_state_last_post_commit_micros"])
+            )
+            unobserved_slices += max(0, slice_delta - 1)
         target = after["target_height"]
         if (
             after["active_height"] == before["active_height"]
@@ -228,6 +284,23 @@ def summarize(samples: list[dict[str, Any]], interval: float) -> dict[str, Any]:
             field: distribution(values) for field, values in rates.items()
         },
         "active_stall_intervals": active_stall_intervals,
+        "active_state_slice_millis": distribution(observed_slice_millis),
+        "active_state_phase_micros": {
+            phase: distribution(values) for phase, values in observed_slice_phases.items()
+        },
+        "unobserved_active_state_slices": unobserved_slices,
+        "peer_event_backlog": distribution(
+            [float(sample["peer_event_backlog"]) for sample in samples]
+        ),
+        "validation_result_backlog": distribution(
+            [float(sample["validation_result_backlog"]) for sample in samples]
+        ),
+        "stored_active_buffer": distribution(
+            [
+                float(max(0, sample["stored_height"] - sample["active_height"]))
+                for sample in samples
+            ]
+        ),
         "starting_ready_peers": first["ready_peers"],
         "ending_ready_peers": last["ready_peers"],
         "minimum_ready_peers": min(sample["ready_peers"] for sample in samples),
@@ -264,6 +337,17 @@ def self_test() -> None:
         "received_blocks": 0,
         "stored_bodies": 0,
         "connected_blocks": 0,
+        "active_state_slices": 0,
+        "active_state_last_slice_blocks": 0,
+        "active_state_last_slice_millis": 0,
+        "active_state_max_slice_millis": 0,
+        "active_state_last_planning_micros": 0,
+        "active_state_last_commit_micros": 0,
+        "active_state_last_post_commit_micros": 0,
+        "peer_event_backlog": 0,
+        "validation_result_backlog": 0,
+        "pending_blocks": 1,
+        "inflight_blocks": 0,
         "tracked_blocks": 1,
         "failed_blocks": 0,
         "unavailable_blocks": 0,
@@ -282,12 +366,23 @@ def self_test() -> None:
         sample["received_blocks"] = index * 10
         sample["stored_bodies"] = index * 10
         sample["connected_blocks"] = index * 10
+        sample["active_state_slices"] = index
+        sample["active_state_last_slice_blocks"] = 10
+        sample["active_state_last_slice_millis"] = 125 + index
+        sample["active_state_max_slice_millis"] = 125 + index
+        sample["active_state_last_planning_micros"] = 10 + index
+        sample["active_state_last_commit_micros"] = 100 + index
+        sample["active_state_last_post_commit_micros"] = 15 + index
         sample["received_bytes"] = index * 1000
         samples.append(sample)
     report = summarize(samples, 1.0)
     assert report["overall_rates_per_second"]["active_height"] == 10.0
     assert report["interval_rates_per_second"]["received_bytes"]["p99"] == 1000.0
     assert report["active_stall_intervals"] == 0
+    assert report["active_state_slice_millis"]["p99"] == 127.0
+    assert report["active_state_phase_micros"]["state_commit"]["p99"] == 102.0
+    assert report["unobserved_active_state_slices"] == 0
+    assert report["stored_active_buffer"]["maximum"] == 0.0
     assert report["starting_ready_peers"] == 2
     assert report["ending_ready_peers"] == 2
     assert report["minimum_ready_peers"] == 2

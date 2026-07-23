@@ -288,6 +288,7 @@ def validate_authority_safety() -> None:
 
 def validate_schema_coordination() -> None:
     store_source = read_text(ROOT / "hsrd/crates/hns-store/src/lib.rs")
+    segment_source = read_text(ROOT / "hsrd/crates/hns-store/src/segment.rs")
     match = re.search(r"pub const SCHEMA_VERSION:\s*u32\s*=\s*(\d+)\s*;", store_source)
     if not match:
         fail("cannot find hns-store SCHEMA_VERSION")
@@ -326,6 +327,22 @@ def validate_schema_coordination() -> None:
             "sync-checkpoint",
         ),
         "storage",
+    )
+    require_tokens(
+        segment_source,
+        (
+            'b"HSGSEG01"',
+            "decode_segment_record_ref",
+            "scan_segment_prefix",
+            "ChecksumMismatch",
+            "torn_tail",
+            "plan_segment_page_reads",
+            "SEGMENT_PAGE_BYTES",
+            "segment_frame_rejects_complete_corruption",
+            "segment_scan_preserves_complete_prefix_before_torn_tail",
+            "page_plan_coalesces_shared_pages_and_covers_spanning_frames",
+        ),
+        "append-only segment storage",
     )
 
     chain_source = read_text(ROOT / "hsrd/crates/hns-chain/src/lib.rs")
@@ -1356,6 +1373,7 @@ def validate_native_performance() -> None:
             "measure-hsrd-native-sync.py",
             "hsrd-performance-gate",
             "Chokepoint model",
+            "Authenticated-tree storage decision",
             "65,536",
             "Optimal ownership boundary",
             "not a full-mainnet IBD completion claim",

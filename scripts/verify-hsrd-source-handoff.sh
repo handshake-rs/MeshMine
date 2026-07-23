@@ -35,6 +35,7 @@ npm run hsrd-name-policy-fixtures --prefix hsd-oracle
 npm run hsrd-p2p-wire-fixtures --prefix hsd-oracle
 npm run hsrd-mining-template-fixtures --prefix hsd-oracle
 npm run hsrd-invalid-corpus --prefix hsd-oracle
+npm run hsrd-contextual-invalid-corpus --prefix hsd-oracle
 npm run core-vectors --prefix hsd-oracle
 npm run validate-body --prefix hsd-oracle
 npm run payout --prefix hsd-oracle
@@ -60,6 +61,7 @@ for source in \
   hsd-oracle/generate-hsrd-p2p-wire-fixtures.js \
   hsd-oracle/generate-hsrd-mining-template-fixtures.js \
   hsd-oracle/generate-hsrd-invalid-corpus.js \
+  hsd-oracle/generate-hsrd-contextual-invalid-corpus.js \
   scripts/verify-operator-receipt-fixture.js; do
   node --check "$source"
 done

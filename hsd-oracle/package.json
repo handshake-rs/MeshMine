@@ -48,7 +48,9 @@
     "hsrd-mining-template-fixtures": "node generate-hsrd-mining-template-fixtures.js --check",
     "generate-hsrd-mining-template-fixtures": "node generate-hsrd-mining-template-fixtures.js --write --check",
     "hsrd-invalid-corpus": "node generate-hsrd-invalid-corpus.js --check",
-    "generate-hsrd-invalid-corpus": "node generate-hsrd-invalid-corpus.js --write --check"
+    "generate-hsrd-invalid-corpus": "node generate-hsrd-invalid-corpus.js --write --check",
+    "hsrd-contextual-invalid-corpus": "node generate-hsrd-contextual-invalid-corpus.js --check",
+    "generate-hsrd-contextual-invalid-corpus": "node generate-hsrd-contextual-invalid-corpus.js --write --check"
   },
   "devDependencies": {
     "hsd": "github:handshake-org/hsd#698e252ebc7b5c1dd0a9587e342fdd153d020ae4"

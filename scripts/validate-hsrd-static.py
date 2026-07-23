@@ -205,6 +205,7 @@ def validate_fixture_manifest() -> None:
         "p2p-wire-v1",
         "mining-template-v1",
         "invalid-noncontextual-v1",
+        "invalid-contextual-v1",
         "mainnet-claim-history-v1",
         "mainnet-claim-replacements-v1",
         "name-transitions-v1",
@@ -400,6 +401,8 @@ def validate_schema_coordination() -> None:
         (
             "pub fn is_consensus_invalid(&self)",
             "consensus_invalid_classifier_excludes_local_state_faults",
+            "independently_generated_contextual_invalid_corpus_matches_pinned_hsd",
+            "invalid-contextual-v1.json",
             "Self::HeaderTreeRootMismatch",
             "Self::MissingCoin",
         ),
@@ -449,6 +452,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsd-oracle/generate-hsrd-p2p-wire-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-mining-template-fixtures.js",
         ROOT / "hsd-oracle/generate-hsrd-invalid-corpus.js",
+        ROOT / "hsd-oracle/generate-hsrd-contextual-invalid-corpus.js",
         ROOT / "hsrd/fixtures/hsd/scripts/sighash-v1.json",
         ROOT / "hsrd/fixtures/hsd/blocks/genesis-v1.json",
         ROOT / "hsrd/fixtures/hsd/airdrops/codec-v1.json",
@@ -465,6 +469,7 @@ def validate_oracle_revision() -> None:
         ROOT / "hsrd/fixtures/hsd/p2p/wire-v1.json",
         ROOT / "hsrd/fixtures/hsd/mining/template-v1.json",
         ROOT / "hsrd/fixtures/hsd/chains/invalid-noncontextual-v1.json",
+        ROOT / "hsrd/fixtures/hsd/chains/invalid-contextual-v1.json",
     ]
     for path in exact_revision_files:
         if HSD_REVISION not in read_text(path):
@@ -500,6 +505,8 @@ def validate_oracle_revision() -> None:
         "hsrd-name-policy-fixtures",
         "hsrd-p2p-wire-fixtures",
         "hsrd-mining-template-fixtures",
+        "hsrd-invalid-corpus",
+        "hsrd-contextual-invalid-corpus",
     )
     for script in check_scripts:
         command = package_scripts.get(script)

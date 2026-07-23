@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HSD_REVISION = "698e252ebc7b5c1dd0a9587e342fdd153d020ae4"
 HSD_REPOSITORY = "handshake-org/hsd"
 MANIFEST_PATH = ROOT / "hsrd/fixtures/hsd/manifest-v1.json"
-EXPECTED_STORE_SCHEMA = 16
-EXPECTED_STORAGE_PROFILE = "hsrd-mining-v12"
+EXPECTED_STORE_SCHEMA = 18
+EXPECTED_STORAGE_PROFILE = "hsrd-mining-v14"
 SKIP_PARTS = {".git", "node_modules", "target", "__pycache__"}
 
 
@@ -326,6 +326,11 @@ def validate_schema_coordination() -> None:
             "AirdropField",
             "SyncCheckpoint",
             "sync-checkpoint",
+            "SegmentArchiveInventory",
+            "migrate_inline_segment_payloads",
+            "create_rocks_checkpoint",
+            "BLOCK_SEGMENT_MANIFEST_KEY",
+            "UNDO_SEGMENT_MANIFEST_KEY",
         ),
         "storage",
     )
@@ -349,6 +354,10 @@ def validate_schema_coordination() -> None:
             "manifest_is_checksummed_and_rejects_version_or_body_corruption",
             "recovery_discards_complete_and_torn_bytes_after_manifest_tail",
             "recovery_rejects_a_manifest_tail_inside_a_frame",
+            'b"HSGLOC01"',
+            "pub struct SegmentArchive",
+            "archive_rotation_rollback_and_recovery_preserve_old_and_new_segments",
+            "archive_recovery_rejects_corruption_inside_the_committed_manifest",
         ),
         "append-only segment storage",
     )
@@ -375,6 +384,37 @@ def validate_schema_coordination() -> None:
             "page_recovery_discards_complete_and_partial_uncommitted_pages",
         ),
         "packed authenticated name pages",
+    )
+
+    maintenance_source = read_text(
+        ROOT / "hsrd/crates/hns-node/src/bin/hsrd_storage_maintenance.rs"
+    )
+    rollout_documentation = read_text(ROOT / "hsrd/docs/storage-rollout.md")
+    require_tokens(
+        maintenance_source,
+        (
+            "STORAGE_MAINTENANCE_MARKER",
+            "create_fallback_backup",
+            "create_rocks_checkpoint",
+            "migrate_inline_segment_payloads",
+            "require_current_store",
+            "FALLBACK_MANIFEST",
+            "committed_frames_validated",
+            "fallback_backup_is_complete_reopenable_and_external_file_independent",
+        ),
+        "offline storage maintenance",
+    )
+    require_tokens(
+        rollout_documentation,
+        (
+            "hsrd-storage-maintenance",
+            "hsrd-storage-fallback.json",
+            "migrate-inline",
+            "blocks.inline_bytes + undo.inline_bytes",
+            "Never start a node directly on the only fallback copy",
+            "cargo build --locked --release",
+        ),
+        "storage rollout and fallback procedure",
     )
 
     chain_source = read_text(ROOT / "hsrd/crates/hns-chain/src/lib.rs")

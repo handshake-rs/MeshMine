@@ -917,6 +917,7 @@ def validate_shadow_sync() -> None:
             "rollback_block_dispatch",
             "expired_block_batch_disconnects_peer_once",
             "progressive_block_batch_uses_an_inactivity_deadline",
+            "new_peers_prove_body_availability_before_using_the_full_window",
             "block_request_timeout: Duration::from_secs(120)",
             "headers_request_timeout: Duration::from_secs(60)",
         ),

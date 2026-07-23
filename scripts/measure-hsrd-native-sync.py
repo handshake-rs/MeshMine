@@ -17,7 +17,7 @@ import urllib.request
 from typing import Any
 
 
-SCHEMA = 2
+SCHEMA = 3
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_AUTHORIZATION_BYTES = 4_096
 
@@ -172,6 +172,22 @@ def extract_sample(payload: dict[str, Any], elapsed: float) -> dict[str, Any]:
             payload.get("active_state_last_post_commit_micros"),
             "active_state_last_post_commit_micros",
         ),
+        "active_state_last_transactions": require_int(
+            payload.get("active_state_last_transactions"),
+            "active_state_last_transactions",
+        ),
+        "active_state_last_non_coinbase_inputs": require_int(
+            payload.get("active_state_last_non_coinbase_inputs"),
+            "active_state_last_non_coinbase_inputs",
+        ),
+        "active_state_last_outputs": require_int(
+            payload.get("active_state_last_outputs"),
+            "active_state_last_outputs",
+        ),
+        "active_state_last_name_actions": require_int(
+            payload.get("active_state_last_name_actions"),
+            "active_state_last_name_actions",
+        ),
         "peer_event_backlog": require_int(
             payload.get("peer_event_backlog"), "peer_event_backlog"
         ),
@@ -233,6 +249,18 @@ def summarize(samples: list[dict[str, Any]], interval: float) -> dict[str, Any]:
         "state_commit": [],
         "post_commit": [],
     }
+    workload_fields = (
+        "transactions",
+        "non_coinbase_inputs",
+        "outputs",
+        "name_actions",
+    )
+    observed_workloads: dict[str, list[float]] = {
+        field: [] for field in workload_fields
+    }
+    commit_micros_per_work: dict[str, list[float]] = {
+        field: [] for field in workload_fields
+    }
     unobserved_slices = 0
     active_stall_intervals = 0
     for before, after in zip(samples, samples[1:]):
@@ -256,6 +284,12 @@ def summarize(samples: list[dict[str, Any]], interval: float) -> dict[str, Any]:
             observed_slice_phases["post_commit"].append(
                 float(after["active_state_last_post_commit_micros"])
             )
+            commit_micros = float(after["active_state_last_commit_micros"])
+            for field in workload_fields:
+                value = after[f"active_state_last_{field}"]
+                observed_workloads[field].append(float(value))
+                if value > 0:
+                    commit_micros_per_work[field].append(commit_micros / value)
             unobserved_slices += max(0, slice_delta - 1)
         target = after["target_height"]
         if (
@@ -287,6 +321,12 @@ def summarize(samples: list[dict[str, Any]], interval: float) -> dict[str, Any]:
         "active_state_slice_millis": distribution(observed_slice_millis),
         "active_state_phase_micros": {
             phase: distribution(values) for phase, values in observed_slice_phases.items()
+        },
+        "active_state_workload_per_slice": {
+            field: distribution(values) for field, values in observed_workloads.items()
+        },
+        "active_state_commit_micros_per_work": {
+            field: distribution(values) for field, values in commit_micros_per_work.items()
         },
         "unobserved_active_state_slices": unobserved_slices,
         "peer_event_backlog": distribution(
@@ -344,6 +384,10 @@ def self_test() -> None:
         "active_state_last_planning_micros": 0,
         "active_state_last_commit_micros": 0,
         "active_state_last_post_commit_micros": 0,
+        "active_state_last_transactions": 0,
+        "active_state_last_non_coinbase_inputs": 0,
+        "active_state_last_outputs": 0,
+        "active_state_last_name_actions": 0,
         "peer_event_backlog": 0,
         "validation_result_backlog": 0,
         "pending_blocks": 1,
@@ -373,6 +417,10 @@ def self_test() -> None:
         sample["active_state_last_planning_micros"] = 10 + index
         sample["active_state_last_commit_micros"] = 100 + index
         sample["active_state_last_post_commit_micros"] = 15 + index
+        sample["active_state_last_transactions"] = 20
+        sample["active_state_last_non_coinbase_inputs"] = 10
+        sample["active_state_last_outputs"] = 30
+        sample["active_state_last_name_actions"] = 5
         sample["received_bytes"] = index * 1000
         samples.append(sample)
     report = summarize(samples, 1.0)
@@ -381,6 +429,9 @@ def self_test() -> None:
     assert report["active_stall_intervals"] == 0
     assert report["active_state_slice_millis"]["p99"] == 127.0
     assert report["active_state_phase_micros"]["state_commit"]["p99"] == 102.0
+    assert (
+        report["active_state_commit_micros_per_work"]["transactions"]["p99"] == 5.1
+    )
     assert report["unobserved_active_state_slices"] == 0
     assert report["stored_active_buffer"]["maximum"] == 0.0
     assert report["starting_ready_peers"] == 2

@@ -289,6 +289,7 @@ def validate_authority_safety() -> None:
 def validate_schema_coordination() -> None:
     store_source = read_text(ROOT / "hsrd/crates/hns-store/src/lib.rs")
     segment_source = read_text(ROOT / "hsrd/crates/hns-store/src/segment.rs")
+    name_page_source = read_text(ROOT / "hsrd/crates/hns-store/src/name_page.rs")
     match = re.search(r"pub const SCHEMA_VERSION:\s*u32\s*=\s*(\d+)\s*;", store_source)
     if not match:
         fail("cannot find hns-store SCHEMA_VERSION")
@@ -350,6 +351,22 @@ def validate_schema_coordination() -> None:
             "recovery_rejects_a_manifest_tail_inside_a_frame",
         ),
         "append-only segment storage",
+    )
+    require_tokens(
+        name_page_source,
+        (
+            'b"HSGNPG01"',
+            "NAME_PAGE_BYTES: usize = 64 * 1024",
+            "NamePageAddress",
+            "NamePageRecordRef",
+            "decode_name_page",
+            "plan_name_page_reads",
+            "DuplicateKey",
+            "packed_page_round_trips_leaf_and_internal_without_payload_copy",
+            "packed_page_rejects_noncanonical_directory_even_with_a_valid_checksum",
+            "one_page_packs_five_hundred_average_internal_records",
+        ),
+        "packed authenticated name pages",
     )
 
     chain_source = read_text(ROOT / "hsrd/crates/hns-chain/src/lib.rs")

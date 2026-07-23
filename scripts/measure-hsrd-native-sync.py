@@ -9,6 +9,7 @@ import json
 import math
 import os
 import pathlib
+import stat
 import tempfile
 import time
 import urllib.parse
@@ -18,6 +19,7 @@ from typing import Any
 
 SCHEMA = 1
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_AUTHORIZATION_BYTES = 4_096
 
 
 class MeasurementError(RuntimeError):
@@ -39,8 +41,11 @@ def optional_tip_height(sync: dict[str, Any], name: str) -> int:
     return require_int(tip.get("height"), f"sync.{name}.height")
 
 
-def read_json(url: str, timeout: float) -> dict[str, Any]:
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+def read_json(url: str, timeout: float, authorization: str | None = None) -> dict[str, Any]:
+    headers = {"Accept": "application/json"}
+    if authorization is not None:
+        headers["Authorization"] = authorization
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = response.read(MAX_RESPONSE_BYTES + 1)
     if len(payload) > MAX_RESPONSE_BYTES:
@@ -49,6 +54,39 @@ def read_json(url: str, timeout: float) -> dict[str, Any]:
     if not isinstance(decoded, dict):
         raise MeasurementError("hsrd diagnostics must be a JSON object")
     return decoded
+
+
+def read_authorization_header(path: pathlib.Path | None) -> str | None:
+    if path is None:
+        return None
+    if not path.is_absolute() or ".." in path.parts:
+        raise MeasurementError(
+            "--authorization-header-file must be absolute without parent traversal"
+        )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_AUTHORIZATION_BYTES:
+            raise MeasurementError(
+                "authorization header must be a bounded mode-0600 regular file"
+            )
+        if metadata.st_mode & 0o077:
+            raise MeasurementError(
+                "authorization header must not be accessible by group or other users"
+            )
+        raw = os.read(descriptor, MAX_AUTHORIZATION_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    if len(raw) > MAX_AUTHORIZATION_BYTES:
+        raise MeasurementError("authorization header exceeds the hard byte limit")
+    try:
+        value = raw.decode("utf-8").strip()
+    except UnicodeDecodeError as error:
+        raise MeasurementError("authorization header is not valid UTF-8") from error
+    if not value or "\r" in value or "\n" in value:
+        raise MeasurementError("authorization header must be one bounded nonempty line")
+    return value
 
 
 def validate_url(url: str, allow_remote: bool) -> str:
@@ -91,11 +129,10 @@ def extract_sample(payload: dict[str, Any], elapsed: float) -> dict[str, Any]:
         if not isinstance(peer, dict):
             raise MeasurementError("native-sync peer scheduler entry is malformed")
         peer_failures += require_int(peer.get("failures"), "sync peer failures")
-    received_bytes = 0
     for peer in peers:
         if not isinstance(peer, dict):
             raise MeasurementError("native-sync peer entry is malformed")
-        received_bytes += require_int(peer.get("bytes_received"), "peer bytes_received")
+        require_int(peer.get("bytes_received"), "peer bytes_received")
     return {
         "elapsed_seconds": round(elapsed, 6),
         "unix_time": int(time.time()),
@@ -115,7 +152,7 @@ def extract_sample(payload: dict[str, Any], elapsed: float) -> dict[str, Any]:
         ),
         "peer_failures": peer_failures,
         "ready_peers": sum(peer.get("state") == "ready" for peer in peers if isinstance(peer, dict)),
-        "received_bytes": received_bytes,
+        "received_bytes": require_int(payload.get("bytes_received"), "bytes_received"),
     }
 
 
@@ -191,6 +228,10 @@ def summarize(samples: list[dict[str, Any]], interval: float) -> dict[str, Any]:
             field: distribution(values) for field, values in rates.items()
         },
         "active_stall_intervals": active_stall_intervals,
+        "starting_ready_peers": first["ready_peers"],
+        "ending_ready_peers": last["ready_peers"],
+        "minimum_ready_peers": min(sample["ready_peers"] for sample in samples),
+        "zero_ready_peer_samples": sum(sample["ready_peers"] == 0 for sample in samples),
         "failure_count": last["failed_blocks"],
         "unavailable_evidence": last["unavailable_blocks"],
         "peer_failure_count": last["peer_failures"],
@@ -247,6 +288,22 @@ def self_test() -> None:
     assert report["overall_rates_per_second"]["active_height"] == 10.0
     assert report["interval_rates_per_second"]["received_bytes"]["p99"] == 1000.0
     assert report["active_stall_intervals"] == 0
+    assert report["starting_ready_peers"] == 2
+    assert report["ending_ready_peers"] == 2
+    assert report["minimum_ready_peers"] == 2
+    assert report["zero_ready_peer_samples"] == 0
+    with tempfile.TemporaryDirectory() as directory:
+        authorization_path = pathlib.Path(directory) / "authorization"
+        authorization_path.write_text("Bearer measurement-test\n", encoding="utf-8")
+        authorization_path.chmod(0o600)
+        assert read_authorization_header(authorization_path) == "Bearer measurement-test"
+        authorization_path.chmod(0o640)
+        try:
+            read_authorization_header(authorization_path)
+        except MeasurementError:
+            pass
+        else:
+            raise AssertionError("group-readable authorization file was accepted")
     print("hsrd native-sync measurement self-test passed")
 
 
@@ -257,6 +314,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval-seconds", type=float, default=1.0)
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
     parser.add_argument("--output", type=pathlib.Path)
+    parser.add_argument("--authorization-header-file", type=pathlib.Path)
     parser.add_argument("--allow-remote-hsrd", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     return parser.parse_args()
@@ -274,17 +332,24 @@ def main() -> None:
     if args.timeout_seconds <= 0:
         raise MeasurementError("timeout must be positive")
     base_url = validate_url(args.hsrd_url, args.allow_remote_hsrd)
+    authorization = read_authorization_header(args.authorization_header_file)
     endpoint = f"{base_url}/api/v1/native-sync"
     started = time.monotonic()
     deadline = started + args.duration_seconds
-    samples = [extract_sample(read_json(endpoint, args.timeout_seconds), 0.0)]
+    samples = [
+        extract_sample(read_json(endpoint, args.timeout_seconds, authorization), 0.0)
+    ]
     while True:
         next_sample = min(deadline, started + len(samples) * args.interval_seconds)
         remaining = next_sample - time.monotonic()
         if remaining > 0:
             time.sleep(remaining)
         now = time.monotonic()
-        samples.append(extract_sample(read_json(endpoint, args.timeout_seconds), now - started))
+        samples.append(
+            extract_sample(
+                read_json(endpoint, args.timeout_seconds, authorization), now - started
+            )
+        )
         if now >= deadline:
             break
     report = summarize(samples, args.interval_seconds)

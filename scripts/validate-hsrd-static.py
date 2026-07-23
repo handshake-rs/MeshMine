@@ -1003,6 +1003,11 @@ def validate_shadow_sync() -> None:
             "handle_header_deployments",
             '"/api/v1/mining-engine"',
             "handle_mining_engine_diagnostics",
+            "initialize_cached_diagnostic_rpc",
+            "refresh_cached_diagnostic_rpc",
+            "diagnostic_snapshot_cached",
+            "diagnostic_snapshot_captured_at",
+            "cached diagnostic status must not wait for the node lock",
         ),
         "Native sync node supervisor",
     )

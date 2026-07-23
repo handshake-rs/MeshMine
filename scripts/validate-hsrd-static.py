@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HSD_REVISION = "698e252ebc7b5c1dd0a9587e342fdd153d020ae4"
 HSD_REPOSITORY = "handshake-org/hsd"
 MANIFEST_PATH = ROOT / "hsrd/fixtures/hsd/manifest-v1.json"
-EXPECTED_STORE_SCHEMA = 14
-EXPECTED_STORAGE_PROFILE = "hsrd-mining-v10"
+EXPECTED_STORE_SCHEMA = 15
+EXPECTED_STORAGE_PROFILE = "hsrd-mining-v11"
 SKIP_PARTS = {".git", "node_modules", "target", "__pycache__"}
 
 

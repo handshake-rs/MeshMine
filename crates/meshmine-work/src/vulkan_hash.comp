@@ -1,0 +1,232 @@
+#version 450
+
+// V3D 7.1 does not expose shaderInt64. Every 64-bit lane is represented as
+// uvec2(low32, high32), keeping this kernel portable to the actual deployment
+// GPU instead of silently selecting llvmpipe.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer HashInput {
+    uint preheader[32];
+    uint padding8[2];
+    uint padding32[8];
+    uint target[8];
+    uint nonce_start;
+    uint nonce_count;
+    uint maximum_hits;
+} input_data;
+
+layout(set = 0, binding = 1, std430) buffer HashOutput {
+    uint hit_count;
+    uint overflow;
+    uint nonces[];
+} output_data;
+
+const uvec2 BLAKE_IV[8] = uvec2[8](
+    uvec2(0xf3bcc908u, 0x6a09e667u),
+    uvec2(0x84caa73bu, 0xbb67ae85u),
+    uvec2(0xfe94f82bu, 0x3c6ef372u),
+    uvec2(0x5f1d36f1u, 0xa54ff53au),
+    uvec2(0xade682d1u, 0x510e527fu),
+    uvec2(0x2b3e6c1fu, 0x9b05688cu),
+    uvec2(0xfb41bd6bu, 0x1f83d9abu),
+    uvec2(0x137e2179u, 0x5be0cd19u)
+);
+
+const uint SIGMA[192] = uint[192](
+     0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u,10u,11u,12u,13u,14u,15u,
+    14u,10u, 4u, 8u, 9u,15u,13u, 6u, 1u,12u, 0u, 2u,11u, 7u, 5u, 3u,
+    11u, 8u,12u, 0u, 5u, 2u,15u,13u,10u,14u, 3u, 6u, 7u, 1u, 9u, 4u,
+     7u, 9u, 3u, 1u,13u,12u,11u,14u, 2u, 6u, 5u,10u, 4u, 0u,15u, 8u,
+     9u, 0u, 5u, 7u, 2u, 4u,10u,15u,14u, 1u,11u,12u, 6u, 8u, 3u,13u,
+     2u,12u, 6u,10u, 0u,11u, 8u, 3u, 4u,13u, 7u, 5u,15u,14u, 1u, 9u,
+    12u, 5u, 1u,15u,14u,13u, 4u,10u, 0u, 7u, 6u, 3u, 9u, 2u, 8u,11u,
+    13u,11u, 7u,14u,12u, 1u, 3u, 9u, 5u, 0u,15u, 4u, 8u, 6u, 2u,10u,
+     6u,15u,14u, 9u,11u, 3u, 0u, 8u,12u, 2u,13u, 7u, 1u, 4u,10u, 5u,
+    10u, 2u, 8u, 4u, 7u, 6u, 1u, 5u,15u,11u, 9u,14u, 3u,12u,13u, 0u,
+     0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u,10u,11u,12u,13u,14u,15u,
+    14u,10u, 4u, 8u, 9u,15u,13u, 6u, 1u,12u, 0u, 2u,11u, 7u, 5u, 3u
+);
+
+const uint KECCAK_RHO[25] = uint[25](
+     0u, 1u,62u,28u,27u,
+    36u,44u, 6u,55u,20u,
+     3u,10u,43u,25u,39u,
+    41u,45u,15u,21u, 8u,
+    18u, 2u,61u,56u,14u
+);
+
+const uvec2 KECCAK_RC[24] = uvec2[24](
+    uvec2(0x00000001u,0x00000000u), uvec2(0x00008082u,0x00000000u),
+    uvec2(0x0000808au,0x80000000u), uvec2(0x80008000u,0x80000000u),
+    uvec2(0x0000808bu,0x00000000u), uvec2(0x80000001u,0x00000000u),
+    uvec2(0x80008081u,0x80000000u), uvec2(0x00008009u,0x80000000u),
+    uvec2(0x0000008au,0x00000000u), uvec2(0x00000088u,0x00000000u),
+    uvec2(0x80008009u,0x00000000u), uvec2(0x8000000au,0x00000000u),
+    uvec2(0x8000808bu,0x00000000u), uvec2(0x0000008bu,0x80000000u),
+    uvec2(0x00008089u,0x80000000u), uvec2(0x00008003u,0x80000000u),
+    uvec2(0x00008002u,0x80000000u), uvec2(0x00000080u,0x80000000u),
+    uvec2(0x0000800au,0x00000000u), uvec2(0x8000000au,0x80000000u),
+    uvec2(0x80008081u,0x80000000u), uvec2(0x00008080u,0x80000000u),
+    uvec2(0x80000001u,0x00000000u), uvec2(0x80008008u,0x80000000u)
+);
+
+uvec2 add64(uvec2 a, uvec2 b) {
+    uint low = a.x + b.x;
+    return uvec2(low, a.y + b.y + uint(low < a.x));
+}
+
+uvec2 rotr64(uvec2 value, uint amount) {
+    amount &= 63u;
+    if (amount == 0u)
+        return value;
+    if (amount == 32u)
+        return value.yx;
+    if (amount < 32u)
+        return uvec2(
+            (value.x >> amount) | (value.y << (32u - amount)),
+            (value.y >> amount) | (value.x << (32u - amount))
+        );
+    uint shift = amount - 32u;
+    return uvec2(
+        (value.y >> shift) | (value.x << (32u - shift)),
+        (value.x >> shift) | (value.y << (32u - shift))
+    );
+}
+
+uvec2 rotl64(uvec2 value, uint amount) {
+    return rotr64(value, (64u - amount) & 63u);
+}
+
+void blake_g(
+    inout uvec2 v[16],
+    uint a, uint b, uint c, uint d,
+    uvec2 x, uvec2 y
+) {
+    v[a] = add64(add64(v[a], v[b]), x);
+    v[d] = rotr64(v[d] ^ v[a], 32u);
+    v[c] = add64(v[c], v[d]);
+    v[b] = rotr64(v[b] ^ v[c], 24u);
+    v[a] = add64(add64(v[a], v[b]), y);
+    v[d] = rotr64(v[d] ^ v[a], 16u);
+    v[c] = add64(v[c], v[d]);
+    v[b] = rotr64(v[b] ^ v[c], 63u);
+}
+
+void blake2b_block(in uvec2 message[16], uint digest_bytes, out uvec2 digest[8]) {
+    uvec2 v[16];
+    for (uint i = 0u; i < 8u; i++) {
+        digest[i] = BLAKE_IV[i];
+        v[i] = digest[i];
+        v[i + 8u] = BLAKE_IV[i];
+    }
+    digest[0] ^= uvec2(0x01010000u | digest_bytes, 0u);
+    v[0] = digest[0];
+    v[12] ^= uvec2(128u, 0u);
+    v[14] = ~v[14];
+
+    for (uint round = 0u; round < 12u; round++) {
+        uint s = round * 16u;
+        blake_g(v, 0u,4u, 8u,12u, message[SIGMA[s]],    message[SIGMA[s+1u]]);
+        blake_g(v, 1u,5u, 9u,13u, message[SIGMA[s+2u]], message[SIGMA[s+3u]]);
+        blake_g(v, 2u,6u,10u,14u, message[SIGMA[s+4u]], message[SIGMA[s+5u]]);
+        blake_g(v, 3u,7u,11u,15u, message[SIGMA[s+6u]], message[SIGMA[s+7u]]);
+        blake_g(v, 0u,5u,10u,15u, message[SIGMA[s+8u]], message[SIGMA[s+9u]]);
+        blake_g(v, 1u,6u,11u,12u, message[SIGMA[s+10u]],message[SIGMA[s+11u]]);
+        blake_g(v, 2u,7u, 8u,13u, message[SIGMA[s+12u]],message[SIGMA[s+13u]]);
+        blake_g(v, 3u,4u, 9u,14u, message[SIGMA[s+14u]],message[SIGMA[s+15u]]);
+    }
+    for (uint i = 0u; i < 8u; i++)
+        digest[i] ^= v[i] ^ v[i + 8u];
+}
+
+void keccak_f(inout uvec2 state[25]) {
+    uvec2 c[5];
+    uvec2 d[5];
+    uvec2 b[25];
+    for (uint round = 0u; round < 24u; round++) {
+        for (uint x = 0u; x < 5u; x++)
+            c[x] = state[x] ^ state[x+5u] ^ state[x+10u] ^ state[x+15u] ^ state[x+20u];
+        for (uint x = 0u; x < 5u; x++)
+            d[x] = c[(x+4u)%5u] ^ rotl64(c[(x+1u)%5u], 1u);
+        for (uint y = 0u; y < 5u; y++)
+            for (uint x = 0u; x < 5u; x++)
+                state[x+5u*y] ^= d[x];
+        for (uint y = 0u; y < 5u; y++) {
+            for (uint x = 0u; x < 5u; x++) {
+                uint destination_x = y;
+                uint destination_y = (2u*x + 3u*y) % 5u;
+                b[destination_x + 5u*destination_y] =
+                    rotl64(state[x+5u*y], KECCAK_RHO[x+5u*y]);
+            }
+        }
+        for (uint y = 0u; y < 5u; y++)
+            for (uint x = 0u; x < 5u; x++)
+                state[x+5u*y] =
+                    b[x+5u*y] ^ ((~b[(x+1u)%5u+5u*y]) & b[(x+2u)%5u+5u*y]);
+        state[0] ^= KECCAK_RC[round];
+    }
+}
+
+bool digest_meets_target(in uvec2 digest[8]) {
+    for (uint byte_index = 0u; byte_index < 32u; byte_index++) {
+        uint word_index = byte_index / 4u;
+        uint shift = (byte_index % 4u) * 8u;
+        uint digest_word = (word_index & 1u) == 0u
+            ? digest[word_index / 2u].x
+            : digest[word_index / 2u].y;
+        uint digest_byte = (digest_word >> shift) & 0xffu;
+        uint target_byte = (input_data.target[word_index] >> shift) & 0xffu;
+        if (digest_byte < target_byte)
+            return true;
+        if (digest_byte > target_byte)
+            return false;
+    }
+    return true;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= input_data.nonce_count)
+        return;
+    uint nonce = input_data.nonce_start + index;
+    if (nonce < input_data.nonce_start)
+        return;
+
+    uvec2 preheader[16];
+    for (uint i = 0u; i < 16u; i++)
+        preheader[i] = uvec2(input_data.preheader[i*2u], input_data.preheader[i*2u+1u]);
+    preheader[0].x = nonce;
+
+    uvec2 left[8];
+    blake2b_block(preheader, 64u, left);
+
+    uvec2 state[25];
+    for (uint i = 0u; i < 25u; i++)
+        state[i] = uvec2(0u);
+    for (uint i = 0u; i < 16u; i++)
+        state[i] = preheader[i];
+    state[16] = uvec2(input_data.padding8[0], input_data.padding8[1]);
+    keccak_f(state);
+    state[0].x ^= 0x00000006u;
+    state[16].y ^= 0x80000000u;
+    keccak_f(state);
+
+    uvec2 final_block[16];
+    for (uint i = 0u; i < 8u; i++)
+        final_block[i] = left[i];
+    for (uint i = 0u; i < 4u; i++)
+        final_block[i+8u] = uvec2(input_data.padding32[i*2u], input_data.padding32[i*2u+1u]);
+    for (uint i = 0u; i < 4u; i++)
+        final_block[i+12u] = state[i];
+    uvec2 digest[8];
+    blake2b_block(final_block, 32u, digest);
+
+    if (digest_meets_target(digest)) {
+        uint hit = atomicAdd(output_data.hit_count, 1u);
+        if (hit < input_data.maximum_hits)
+            output_data.nonces[hit] = nonce;
+        else
+            atomicExchange(output_data.overflow, 1u);
+    }
+}

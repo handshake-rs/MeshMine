@@ -52,6 +52,19 @@ pub struct MinerHeader {
     pub bits: u32,
 }
 
+/// Precomputed immutable portion of an HNS miner header.
+///
+/// A mining loop changes the nonce far more often than any other field.
+/// Keeping the subheader commitment and deterministic padding outside that
+/// loop removes two BLAKE2b computations per attempted nonce while preserving
+/// the exact scalar `MinerHeader::share_hash` result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreparedMinerHasher {
+    preheader: [u8; 128],
+    padding8: [u8; 8],
+    padding32: [u8; 32],
+}
+
 impl Default for HnsHeader {
     fn default() -> Self {
         Self {
@@ -272,6 +285,38 @@ impl MinerHeader {
     pub fn share_hash(&self) -> Hash256 {
         share_hash_from_preheader(&self.preheader(), &self.prev_block, &self.tree_root)
     }
+
+    pub fn prepare_hasher(&self) -> PreparedMinerHasher {
+        PreparedMinerHasher::new(self)
+    }
+}
+
+impl PreparedMinerHasher {
+    pub fn new(header: &MinerHeader) -> Self {
+        let padding8 = deterministic_padding(&header.prev_block, &header.tree_root, 8)
+            .try_into()
+            .expect("fixed eight-byte padding");
+        let padding32 = deterministic_padding(&header.prev_block, &header.tree_root, 32)
+            .try_into()
+            .expect("fixed 32-byte padding");
+        Self {
+            preheader: header.preheader(),
+            padding8,
+            padding32,
+        }
+    }
+
+    /// Hash one nonce without recomputing the immutable subheader commitment.
+    pub fn share_hash(&self, nonce: u32) -> Hash256 {
+        let mut preheader = self.preheader;
+        preheader[..4].copy_from_slice(&nonce.to_le_bytes());
+        let left = blake2b_512(&[&preheader]);
+        let mut sha3 = Sha3_256::new();
+        Digest::update(&mut sha3, preheader);
+        Digest::update(&mut sha3, self.padding8);
+        let right: Hash256 = sha3.finalize().into();
+        blake2b_256(&[&left, &self.padding32, &right])
+    }
 }
 
 pub fn blake2b_256(parts: &[&[u8]]) -> Hash256 {
@@ -452,6 +497,28 @@ mod tests {
         };
         let miner = MinerHeader::from_bytes(&header.to_miner()).unwrap();
         assert_eq!(miner.share_hash(), header.share_hash());
+    }
+
+    #[test]
+    fn prepared_hasher_matches_scalar_nonce_updates() {
+        let mut header = MinerHeader {
+            nonce: 0,
+            time: 1_717_171_717,
+            prev_block: [1; 32],
+            tree_root: [2; 32],
+            mask_hash: [3; 32],
+            extra_nonce: [4; 24],
+            reserved_root: [5; 32],
+            witness_root: [6; 32],
+            merkle_root: [7; 32],
+            version: 8,
+            bits: 0x1c00_ffff,
+        };
+        let prepared = header.prepare_hasher();
+        for nonce in [0, 1, 2, 65_535, u32::MAX] {
+            header.nonce = nonce;
+            assert_eq!(prepared.share_hash(nonce), header.share_hash());
+        }
     }
 
     #[test]

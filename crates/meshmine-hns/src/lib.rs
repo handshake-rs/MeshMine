@@ -10,7 +10,7 @@ mod target;
 
 pub use header::{
     HASH_SIZE, HEADER_SIZE, Hash256, HnsHeader, MINER_HEADER_SIZE, MinerHeader, NONCE_SIZE,
-    blake2b_256, blake2b_512,
+    PreparedMinerHasher, blake2b_256, blake2b_512,
 };
 pub use merkle::merkle_root;
 pub use target::{

@@ -38,6 +38,7 @@ license = "MIT"
 rust-version = "1.89"
 
 [workspace.dependencies]
+ash = "0.38.0"
 blake2 = "0.10.6"
 ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
 hex = "0.4.3"

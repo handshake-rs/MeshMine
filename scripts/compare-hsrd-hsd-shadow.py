@@ -94,10 +94,18 @@ def normalize_hash(value: Any, label: str) -> str:
     raise ProbeError(f"{label} must be a 32-byte hash")
 
 
-def read_http_json(url: str, timeout: float) -> dict[str, Any]:
+def read_http_json(
+    url: str, timeout: float, authorization: str | None = None
+) -> dict[str, Any]:
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "meshmine-hsrd-parity/1",
+    }
+    if authorization is not None:
+        headers["Authorization"] = authorization
     request = urllib.request.Request(
         url,
-        headers={"Accept": "application/json", "User-Agent": "meshmine-hsrd-parity/1"},
+        headers=headers,
         method="GET",
     )
     try:
@@ -113,6 +121,29 @@ def read_http_json(url: str, timeout: float) -> dict[str, Any]:
         return require_object(json.loads(body), url)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ProbeError(f"{url} returned invalid JSON: {exc}") from exc
+
+
+def read_authorization(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    if not path.is_absolute() or ".." in path.parts:
+        raise ProbeError(
+            "--hsrd-authorization-file must be absolute without parent traversal"
+        )
+    if path.is_symlink() or not path.is_file():
+        raise ProbeError("--hsrd-authorization-file must be a regular non-symlink file")
+    metadata = path.stat()
+    if metadata.st_mode & 0o077:
+        raise ProbeError("--hsrd-authorization-file must have mode 0600")
+    if metadata.st_size > 4096:
+        raise ProbeError("--hsrd-authorization-file exceeds 4096 bytes")
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ProbeError(f"cannot read hsrd authorization file: {exc}") from exc
+    if not value or any(ord(char) < 32 for char in value):
+        raise ProbeError("hsrd authorization value is empty or contains control bytes")
+    return value
 
 
 class HsdCli:
@@ -283,8 +314,14 @@ def extract_hsrd_header(status: dict[str, Any], shadow: dict[str, Any]) -> dict[
         raise ProbeError("header comparison refuses a mining-authoritative hsrd instance")
     if not require_bool(shadow.get("enabled"), "native-sync enabled flag"):
         raise ProbeError("native-sync diagnostics report the runtime disabled")
-    if not require_bool(shadow.get("headers_only"), "native-sync headers-only flag"):
-        raise ProbeError("header comparison requires --native-sync-headers-only")
+    headers_only = require_bool(shadow.get("headers_only"), "native-sync headers-only flag")
+    if not headers_only:
+        if not require_bool(shadow.get("active_state"), "native-sync active-state flag"):
+            raise ProbeError(
+                "header comparison requires headers-only or full active-state native sync"
+            )
+        if require_bool(shadow.get("observation_only"), "native-sync observation flag"):
+            raise ProbeError("header comparison refuses observation-only body sync")
 
     sync = require_object(shadow.get("sync"), "native-sync scheduler snapshot")
     sync_tip = require_object(sync.get("best_header"), "native-sync best header")
@@ -564,12 +601,13 @@ def probe_once(
     cli: HsdCli,
     timeout: float,
     previous_observation: dict[str, Any] | None,
+    authorization: str | None = None,
 ) -> tuple[dict[str, Any], bool | None]:
     status_url = f"{hsrd_url}/api/v1/status"
     shadow_url = f"{hsrd_url}/api/v1/native-sync"
     hsrd_before = extract_hsrd(
-        read_http_json(status_url, timeout),
-        read_http_json(shadow_url, timeout),
+        read_http_json(status_url, timeout, authorization),
+        read_http_json(shadow_url, timeout, authorization),
     )
     hsd_before = extract_hsd_info(cli.info())
     hsd_before["source_revision"] = cli.source_revision
@@ -631,8 +669,8 @@ def probe_once(
     if hsd_after != hsd_before:
         raise ProbeError("HSD tip changed during the comparison probe")
     hsrd_after = extract_hsrd(
-        read_http_json(status_url, timeout),
-        read_http_json(shadow_url, timeout),
+        read_http_json(status_url, timeout, authorization),
+        read_http_json(shadow_url, timeout, authorization),
     )
     if hsrd_after != hsrd_before:
         raise ProbeError("hsrd active state changed during the comparison probe")
@@ -650,16 +688,21 @@ def probe_once(
     )
 
 
-def probe_header_once(hsrd_url: str, cli: HsdCli, timeout: float) -> dict[str, Any]:
+def probe_header_once(
+    hsrd_url: str,
+    cli: HsdCli,
+    timeout: float,
+    authorization: str | None = None,
+) -> dict[str, Any]:
     status_url = f"{hsrd_url}/api/v1/status"
     shadow_url = f"{hsrd_url}/api/v1/native-sync"
     deployments_url = f"{hsrd_url}/api/v1/header-deployments"
     hsrd_before = extract_hsrd_header(
-        read_http_json(status_url, timeout),
-        read_http_json(shadow_url, timeout),
+        read_http_json(status_url, timeout, authorization),
+        read_http_json(shadow_url, timeout, authorization),
     )
     hsrd_deployments_before = extract_hsrd_header_deployments(
-        read_http_json(deployments_url, timeout)
+        read_http_json(deployments_url, timeout, authorization)
     )
     if (
         hsrd_deployments_before["height"] != hsrd_before["height"]
@@ -700,13 +743,13 @@ def probe_header_once(hsrd_url: str, cli: HsdCli, timeout: float) -> dict[str, A
     if hsd_chain_after != hsd_chain_before:
         raise ProbeError("HSD deployment state changed during the header comparison probe")
     hsrd_after = extract_hsrd_header(
-        read_http_json(status_url, timeout),
-        read_http_json(shadow_url, timeout),
+        read_http_json(status_url, timeout, authorization),
+        read_http_json(shadow_url, timeout, authorization),
     )
     if hsrd_after != hsrd_before:
         raise ProbeError("hsrd best header changed during the header comparison probe")
     hsrd_deployments_after = extract_hsrd_header_deployments(
-        read_http_json(deployments_url, timeout)
+        read_http_json(deployments_url, timeout, authorization)
     )
     if hsrd_deployments_after != hsrd_deployments_before:
         raise ProbeError("hsrd header deployment state changed during the comparison probe")
@@ -1231,6 +1274,11 @@ def self_test() -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hsrd-url", help="hsrd diagnostic base URL, without a path")
+    parser.add_argument(
+        "--hsrd-authorization-file",
+        type=Path,
+        help="mode-0600 file containing the exact hsrd Authorization value",
+    )
     parser.add_argument("--hsd-cli", help="absolute path to the pinned hsd-cli executable")
     parser.add_argument("--hsd-source", help="absolute path to the pinned HSD source tree")
     parser.add_argument(
@@ -1290,6 +1338,7 @@ def main() -> int:
 
     try:
         hsrd_url = normalize_hsrd_url(args.hsrd_url, args.allow_remote_hsrd)
+        authorization = read_authorization(args.hsrd_authorization_file)
         executable = Path(args.hsd_cli)
         if (
             not executable.is_absolute()
@@ -1327,6 +1376,7 @@ def main() -> int:
                         hsrd_url,
                         cli,
                         args.timeout_seconds,
+                        authorization,
                     )
                     previous_canonical = None
                 else:
@@ -1335,6 +1385,7 @@ def main() -> int:
                         cli,
                         args.timeout_seconds,
                         previous,
+                        authorization,
                     )
                 break
             except ProbeError as exc:

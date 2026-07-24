@@ -13,6 +13,7 @@ pub enum BackendKind {
     Rocm = 5,
     Arm64Cpu = 6,
     X86Cpu = 7,
+    Vulkan = 8,
     Simulator = 255,
 }
 
@@ -26,6 +27,7 @@ impl BackendKind {
             5 => Ok(Self::Rocm),
             6 => Ok(Self::Arm64Cpu),
             7 => Ok(Self::X86Cpu),
+            8 => Ok(Self::Vulkan),
             255 => Ok(Self::Simulator),
             _ => Err(CapabilityError::UnknownBackendKind(value)),
         }

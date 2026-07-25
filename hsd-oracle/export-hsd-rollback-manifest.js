@@ -250,6 +250,8 @@ function reverseNames(item, overlay) {
     const after = state.isNull() ? null : state.encode().toString('hex');
     state.applyState(delta);
     const before = state.isNull() ? null : state.encode().toString('hex');
+    if (before === after)
+      continue;
     names.push({name_hash: key, before, after});
   }
   names.sort((left, right) => left.name_hash.localeCompare(right.name_hash));

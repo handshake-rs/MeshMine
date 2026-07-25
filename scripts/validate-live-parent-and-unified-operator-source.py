@@ -23,17 +23,17 @@ files = {
         'active_tip_qualification_rejects_a_deep_canonical_parent',
         'mainnet_requires_the_explicit_synchronized_hsrd_canary_gate',
     ],
-    'hsrd/crates/hns-node/src/lib.rs': [
+    '../hns-node-rs/crates/hns-node/src/lib.rs': [
         'RpcAuthorizationHeader', 'serve_rpc_listener_with_authorization',
         'require_rpc_authorization', 'rpc_authentication_required',
         'rpc_authorization_rejects_missing_and_wrong_values',
     ],
-    'hsrd/crates/hns-node/src/shadow_sync.rs': [
+    '../hns-node-rs/crates/hns-node/src/shadow_sync.rs': [
         'parent_authority_value', 'getparentauthority',
         'best_block_tip_from_snapshot', 'read_canonical_hash',
         'parent_authority_fast_path_is_coherent_and_fail_closed',
     ],
-    'hsrd/crates/hns-rpc/src/lib.rs': [
+    '../hns-node-rs/crates/hns-rpc/src/lib.rs': [
         'GetParentAuthority', 'getparentauthority',
         'parent_authority_is_one_coherent_snapshot',
     ],

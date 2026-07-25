@@ -614,6 +614,7 @@ dependencies = [
  "axum",
  "blake2",
  "clap",
+ "hex",
  "hns-chain",
  "hns-consensus",
  "hns-mempool",

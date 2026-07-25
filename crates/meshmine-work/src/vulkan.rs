@@ -377,7 +377,7 @@ impl VulkanHasher {
     }
 
     fn write_memory(&self, buffer: &VulkanBuffer, words: &[u32]) -> Result<(), VulkanHashError> {
-        let bytes = vk::DeviceSize::try_from(words.len() * size_of::<u32>())
+        let bytes = vk::DeviceSize::try_from(std::mem::size_of_val(words))
             .map_err(|_| VulkanHashError::BatchBounds)?;
         if bytes > buffer.bytes {
             return Err(VulkanHashError::BatchBounds);

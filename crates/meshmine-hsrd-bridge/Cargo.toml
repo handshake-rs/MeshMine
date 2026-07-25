@@ -4,13 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Exact native hsrd-to-MeshMine mining authorization bridge"
+description = "Exact standalone hns-node-rs-to-MeshMine mining authorization bridge"
 
 [dependencies]
-hns-consensus = { path = "../../hsrd/crates/hns-consensus" }
-hns-mining = { path = "../../hsrd/crates/hns-mining" }
-hns-node = { path = "../../hsrd/crates/hns-node", default-features = false }
-hns-primitives = { path = "../../hsrd/crates/hns-primitives" }
+hns-consensus = { path = "../../../hns-node-rs/crates/hns-consensus" }
+hns-mining = { path = "../../../hns-node-rs/crates/hns-mining" }
+hns-node = { path = "../../../hns-node-rs/crates/hns-node", default-features = false }
+hns-primitives = { path = "../../../hns-node-rs/crates/hns-primitives" }
 meshmine-gateway = { path = "../meshmine-gateway" }
 meshmine-fast-path = { path = "../meshmine-fast-path" }
 meshmine-hns = { path = "../meshmine-hns" }

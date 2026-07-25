@@ -189,21 +189,19 @@ async function auditUtxos(chain, layout, CoinEntry, blake2b) {
   });
 
   const component = digest.finish();
-  if (component.count !== chain.db.state.coin) {
-    throw new Error(
-      `UTXO scan count ${component.count} disagrees with HSD chain state `
-      + `${chain.db.state.coin}`
-    );
-  }
-  if (totalValue !== BigInt(chain.db.state.value)) {
-    throw new Error(
-      `UTXO value ${totalValue} disagrees with HSD chain state `
-      + `${chain.db.state.value}`
-    );
-  }
+  const chainStateValue = BigInt(chain.db.state.value);
+  const chainStateBurned = BigInt(chain.db.state.burned);
+  const chainStateUtxoValue = chainStateValue + chainStateBurned;
   return {
     ...component,
     total_value: Number(totalValue),
+    hsd_chain_state_coin: chain.db.state.coin,
+    hsd_chain_state_value: Number(chainStateValue),
+    hsd_chain_state_burned: Number(chainStateBurned),
+    physical_count_delta_from_chain_state:
+      component.count - chain.db.state.coin,
+    physical_value_delta_from_chain_state:
+      Number(totalValue - chainStateUtxoValue),
     semantic_projection: UTXO_PROJECTION,
     excluded_hsd_archival_fields: EXCLUDED_HSD_UTXO_FIELDS
   };

@@ -75,6 +75,15 @@ const NAME_UNDO_CODEC_MAX: usize = 32 + 1 + NAME_STATE_CODEC_MAX + 9;
 const BLOCK_UNDO_CODEC_MAX: usize = MAX_BLOCK_WEIGHT * 8;
 const NAME_TREE_ACCUMULATOR_CODEC_MAX: usize = MAX_BLOCK_WEIGHT * 2;
 
+/// Canonically encoded name-tree nodes keyed by their authenticated roots.
+pub type NameTreeNodeRecords = BTreeMap<TreeRoot, Vec<u8>>;
+
+/// Reconstructed committed root, materialized-name count, and canonical nodes.
+pub type ReconstructedCommittedNameTreeRecords = (TreeRoot, usize, NameTreeNodeRecords);
+
+/// Canonical node records ordered from a matched node toward the name-tree root.
+pub type NameTreeRecordPath = Vec<(TreeRoot, Vec<u8>)>;
+
 #[derive(Default)]
 struct NameStateChanges {
     current: BTreeMap<NameHash, NameState>,
@@ -2721,7 +2730,7 @@ pub fn validate_persisted_name_tree<T: ReadSnapshot>(
 pub fn load_persisted_name_tree_records<T: ReadSnapshot>(
     snapshot: &T,
     root: TreeRoot,
-) -> Result<BTreeMap<TreeRoot, Vec<u8>>, StateError> {
+) -> Result<NameTreeNodeRecords, StateError> {
     let roots =
         reachable_record_roots([root], |node_root| load_persisted_node(snapshot, node_root))?;
     let mut records = BTreeMap::new();
@@ -3664,7 +3673,7 @@ pub fn reconstruct_committed_name_tree_records<T: ReadSnapshot>(
     snapshot: &T,
     tree_interval: Height,
     tip_height: Height,
-) -> Result<(TreeRoot, usize, BTreeMap<TreeRoot, Vec<u8>>), StateError> {
+) -> Result<ReconstructedCommittedNameTreeRecords, StateError> {
     let (stored, tree) = prepare_committed_name_tree(snapshot, tree_interval, tip_height)?;
     let name_count = tree.len();
     let (actual, records) = tree.node_records_with_root()?;
@@ -3673,8 +3682,6 @@ pub fn reconstruct_committed_name_tree_records<T: ReadSnapshot>(
     }
     Ok((actual, name_count, records))
 }
-
-pub type NameTreeRecordPath = Vec<(TreeRoot, Vec<u8>)>;
 
 /// Reconstruct one committed tree while retaining only a requested node's
 /// canonical path. This is the bounded diagnostic counterpart to exporting

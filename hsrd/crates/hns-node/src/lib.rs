@@ -81,9 +81,9 @@ use hns_state::{
 };
 use hns_store::{
     decode_u64, encode_u64, mark_unclean_start, open_store, truncate_name_pages_to_committed_tail,
-    was_clean_shutdown, ColumnFamily, DurabilityPolicy, MetaKey, NamePageAppender, ReadSnapshot,
-    StagingOverlay, Store, StoreBackend, StoreConfig, StoreHandle, WriteBatch, SCHEMA_VERSION,
-    STORAGE_PROFILE,
+    was_clean_shutdown, ColumnFamily, DurabilityPolicy, MetaKey, NamePageAddress, NamePageAppender,
+    ReadSnapshot, StagingOverlay, Store, StoreBackend, StoreConfig, StoreHandle, WriteBatch,
+    SCHEMA_VERSION, STORAGE_PROFILE,
 };
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, sync::watch, task::JoinHandle};
@@ -2100,6 +2100,20 @@ struct NamePageStorage {
     appender: Option<NamePageAppender>,
 }
 
+struct StagedNamePageCompaction {
+    state: NamePageState,
+    appender: NamePageAppender,
+    records_written: u64,
+    pages_written: u64,
+    published: BTreeMap<TreeRoot, NamePageAddress>,
+}
+
+#[derive(Clone, Copy)]
+struct NamePageCommitTarget {
+    root: TreeRoot,
+    height: Option<Height>,
+}
+
 enum NodeReadSnapshot<'a, S: ReadSnapshot> {
     Base(&'a S),
     Pages(NamePageSnapshot<'a, S>),
@@ -2347,15 +2361,9 @@ impl NamePageStorage {
 
         let file_path = name_page_file_path(&self.directory, generation, 0);
         let mut commit_attempted = false;
-        let staged = (|| -> Result<(
-            NamePageState,
-            NamePageAppender,
-            u64,
-            u64,
-            BTreeMap<TreeRoot, hns_store::NamePageAddress>,
-        )> {
-            let mut appender = NamePageAppender::create_new(&file_path, generation, 0)
-                .map_err(|error| {
+        let staged = (|| -> Result<StagedNamePageCompaction> {
+            let mut appender =
+                NamePageAppender::create_new(&file_path, generation, 0).map_err(|error| {
                     anyhow::anyhow!(
                         "failed to create compacted name-page generation {}: {error}",
                         file_path.display()
@@ -2367,9 +2375,7 @@ impl NamePageStorage {
                 let source_reader = self.reader(&snapshot)?;
                 let source_snapshot = NamePageSnapshot::new(&snapshot, &source_reader);
                 stream_name_page_tree(&source_snapshot, self.state.root, &mut appender).map_err(
-                    |error| {
-                        anyhow::anyhow!("failed to stream compacted name-page base: {error}")
-                    },
+                    |error| anyhow::anyhow!("failed to stream compacted name-page base: {error}"),
                 )?
             };
             let mut manifest = base.manifest;
@@ -2381,16 +2387,13 @@ impl NamePageStorage {
                 || {
                     NamePageRootLocator::new(
                         generation,
-                        hns_store::NamePageAddress::new(0, 0, 0)
-                            .expect("zero page address fits"),
+                        NamePageAddress::new(0, 0, 0).expect("zero page address fits"),
                     )
                 },
                 |address| NamePageRootLocator::new(generation, address),
             );
-            let output_reader =
-                NamePageTreeReader::open_segments(&paths, self.state.root, locator).map_err(
-                    |error| anyhow::anyhow!("failed to open compacted name pages: {error}"),
-                )?;
+            let output_reader = NamePageTreeReader::open_segments(&paths, self.state.root, locator)
+                .map_err(|error| anyhow::anyhow!("failed to open compacted name pages: {error}"))?;
             output_reader
                 .discover_tree_addresses(self.state.root)
                 .map_err(|error| {
@@ -2407,15 +2410,11 @@ impl NamePageStorage {
                 .copied()
                 .filter(|root| *root != TreeRoot::ZERO && *root != self.state.root)
             {
-                let delta = stream_name_page_tree_delta(
-                    &source_snapshot,
-                    root,
-                    &mut appender,
-                    &mut known,
-                )
-                .map_err(|error| {
-                    anyhow::anyhow!("failed to stream retained name root {root:?}: {error}")
-                })?;
+                let delta =
+                    stream_name_page_tree_delta(&source_snapshot, root, &mut appender, &mut known)
+                        .map_err(|error| {
+                            anyhow::anyhow!("failed to stream retained name root {root:?}: {error}")
+                        })?;
                 manifest = delta.manifest;
                 records_written = records_written
                     .checked_add(delta.record_count)
@@ -2425,16 +2424,14 @@ impl NamePageStorage {
                     .ok_or_else(|| anyhow::anyhow!("compacted name page count overflow"))?;
             }
 
-            let root_address = if self.state.root == TreeRoot::ZERO {
-                None
-            } else {
-                Some(
-                    known
-                        .get(&self.state.root)
-                        .copied()
-                        .ok_or_else(|| anyhow::anyhow!("compacted committed root has no address"))?,
-                )
-            };
+            let root_address =
+                if self.state.root == TreeRoot::ZERO {
+                    None
+                } else {
+                    Some(known.get(&self.state.root).copied().ok_or_else(|| {
+                        anyhow::anyhow!("compacted committed root has no address")
+                    })?)
+                };
             let next = NamePageState {
                 manifest,
                 root: self.state.root,
@@ -2478,16 +2475,22 @@ impl NamePageStorage {
             )?;
             commit_attempted = true;
             store.commit(batch)?;
-            Ok((
-                next,
+            Ok(StagedNamePageCompaction {
+                state: next,
                 appender,
                 records_written,
                 pages_written,
                 published,
-            ))
+            })
         })();
 
-        let (next, appender, records_written, pages_written, published) = match staged {
+        let StagedNamePageCompaction {
+            state: next,
+            appender,
+            records_written,
+            pages_written,
+            published,
+        } = match staged {
             Ok(staged) => staged,
             Err(error) => {
                 if !commit_attempted {
@@ -2524,9 +2527,9 @@ impl NamePageStorage {
         reader: &NamePageTreeReader,
         staged_nodes: BTreeMap<Vec<u8>, Option<Vec<u8>>>,
         snapshot_pins: &[NameTreeSnapshotPin],
-        root: TreeRoot,
-        height: Option<Height>,
+        target: NamePageCommitTarget,
     ) -> Result<NamePageState> {
+        let NamePageCommitTarget { root, height } = target;
         let mut records = BTreeMap::new();
         for (key, value) in staged_nodes {
             let raw_root: [u8; 32] = key.as_slice().try_into().map_err(|_| {
@@ -4782,8 +4785,10 @@ impl NodeState {
                 &reader,
                 staged_nodes,
                 &staged_pins,
-                root,
-                Some(request.height),
+                NamePageCommitTarget {
+                    root,
+                    height: Some(request.height),
+                },
             ) {
             Ok(prepared) => prepared,
             Err(error) => {
@@ -5055,8 +5060,10 @@ impl NodeState {
                 &reader,
                 staged_nodes,
                 &staged_pins,
-                root,
-                resulting_height,
+                NamePageCommitTarget {
+                    root,
+                    height: resulting_height,
+                },
             ) {
             Ok(prepared) => prepared,
             Err(error) => {
@@ -5365,8 +5372,10 @@ impl NodeState {
                     reader,
                     staged_nodes,
                     &staged_pins,
-                    root,
-                    Some(final_tip.height),
+                    NamePageCommitTarget {
+                        root,
+                        height: Some(final_tip.height),
+                    },
                 ) {
                     Ok(prepared) => Some(prepared),
                     Err(error) => {
@@ -8630,8 +8639,10 @@ mod tests {
                 &reader,
                 BTreeMap::new(),
                 &[],
-                root,
-                Some(skipped_seal_height),
+                NamePageCommitTarget {
+                    root,
+                    height: Some(skipped_seal_height),
+                },
             )
             .expect("prepare physical seal");
         drop(reader);
@@ -8757,8 +8768,10 @@ mod tests {
                 &reader,
                 staged_nodes,
                 &pins,
-                second_root,
-                Some(12),
+                NamePageCommitTarget {
+                    root: second_root,
+                    height: Some(12),
+                },
             )
             .expect("prepare multi-boundary page batch");
         drop(reader);
@@ -8821,20 +8834,19 @@ mod tests {
         assert_eq!(report.generation, 2);
         assert_eq!(report.retained_roots, 2);
         assert!(report.records_written > 0);
-        let snapshot = store.snapshot().expect("compacted snapshot");
-        assert!(load_name_page_root_record(&snapshot, stale_root)
-            .expect("stale locator read")
-            .is_none());
-        let reader = pages.reader(&snapshot).expect("compacted reader");
-        let page_snapshot = NamePageSnapshot::new(&snapshot, &reader);
-        assert!(
-            validate_persisted_name_trees(&page_snapshot, [first_root, second_root])
-                .expect("validate compacted retained roots")
-                >= 2
-        );
-        drop(page_snapshot);
-        drop(reader);
-        drop(snapshot);
+        {
+            let snapshot = store.snapshot().expect("compacted snapshot");
+            assert!(load_name_page_root_record(&snapshot, stale_root)
+                .expect("stale locator read")
+                .is_none());
+            let reader = pages.reader(&snapshot).expect("compacted reader");
+            let page_snapshot = NamePageSnapshot::new(&snapshot, &reader);
+            assert!(
+                validate_persisted_name_trees(&page_snapshot, [first_root, second_root])
+                    .expect("validate compacted retained roots")
+                    >= 2
+            );
+        }
 
         let orphan_path = name_page_file_path(&directory, 3, 0);
         let superseded_path = name_page_file_path(&directory, 1, 0);

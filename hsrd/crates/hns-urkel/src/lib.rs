@@ -61,6 +61,17 @@ impl TreeRoot {
     }
 }
 
+/// One canonically encoded Urkel node, paired with its authenticated root.
+pub type EncodedNodeRecord = (TreeRoot, Vec<u8>);
+
+/// Canonical node records ordered from a matched node toward the tree root.
+pub type EncodedNodePath = Vec<EncodedNodeRecord>;
+
+/// Root, reachable-record count, and an optional path to a requested node.
+pub type RecordPathLookup = (TreeRoot, usize, Option<EncodedNodePath>);
+
+type RecordPathTraversal = (TreeRoot, Option<EncodedNodePath>);
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ProofKind {
     Inclusion,
@@ -518,10 +529,7 @@ impl MemoryUrkel {
     /// Recompute the root while retaining canonical bytes only for the path
     /// from `target` to that root. Offline corruption diagnosis therefore
     /// remains linear in tree size without retaining every encoded record.
-    pub fn record_path_to_root(
-        &self,
-        target: TreeRoot,
-    ) -> Result<(TreeRoot, usize, Option<Vec<(TreeRoot, Vec<u8>)>>), UrkelError> {
+    pub fn record_path_to_root(&self, target: TreeRoot) -> Result<RecordPathLookup, UrkelError> {
         let entries = self.entries.iter().collect::<Vec<_>>();
         let record_count = entries
             .len()
@@ -2461,7 +2469,7 @@ fn sorted_entries_record_path(
     entries: &[(&NameHash, &Vec<u8>)],
     depth: usize,
     target: TreeRoot,
-) -> Result<(TreeRoot, Option<Vec<(TreeRoot, Vec<u8>)>>), UrkelError> {
+) -> Result<RecordPathTraversal, UrkelError> {
     match entries {
         [] => Ok((TreeRoot::ZERO, None)),
         [(key, value)] => {

@@ -829,6 +829,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a Vulkan compute device"]
     fn hardware_kernel_matches_scalar_oracle_for_complete_easy_batch() {
         let mut hasher = VulkanHasher::new(0, 128, 128).expect("hardware Vulkan compute device");
         let mut hits = hasher

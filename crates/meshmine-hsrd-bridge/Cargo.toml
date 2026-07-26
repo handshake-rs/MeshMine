@@ -7,10 +7,10 @@ rust-version.workspace = true
 description = "Exact standalone hns-node-rs-to-MeshMine mining authorization bridge"
 
 [dependencies]
-hns-consensus = { path = "../../../hns-node-rs/crates/hns-consensus" }
-hns-mining = { path = "../../../hns-node-rs/crates/hns-mining" }
-hns-node = { path = "../../../hns-node-rs/crates/hns-node", default-features = false }
-hns-primitives = { path = "../../../hns-node-rs/crates/hns-primitives" }
+hns-consensus = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "504d3fed035feb8a637ca09c4e0816b6e1144622" }
+hns-mining = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "504d3fed035feb8a637ca09c4e0816b6e1144622" }
+hns-node = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "504d3fed035feb8a637ca09c4e0816b6e1144622", default-features = false }
+hns-primitives = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "504d3fed035feb8a637ca09c4e0816b6e1144622" }
 meshmine-gateway = { path = "../meshmine-gateway" }
 meshmine-fast-path = { path = "../meshmine-fast-path" }
 meshmine-hns = { path = "../meshmine-hns" }

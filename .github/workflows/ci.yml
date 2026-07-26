@@ -21,6 +21,8 @@ jobs:
         run: rustup default 1.89.0
       - name: Verify committed Rust dependency graph
         run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: Verify immutable external-node source boundary
+        run: python3 scripts/validate-external-node-boundary.py
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22

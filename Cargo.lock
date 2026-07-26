@@ -558,6 +558,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "hns-chain"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-primitives",
  "hns-store",
@@ -568,6 +569,7 @@ dependencies = [
 [[package]]
 name = "hns-consensus"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-goosig",
  "hns-primitives",
@@ -580,6 +582,7 @@ dependencies = [
 [[package]]
 name = "hns-goosig"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "cc",
  "thiserror",
@@ -588,6 +591,7 @@ dependencies = [
 [[package]]
 name = "hns-mempool"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-consensus",
  "hns-primitives",
@@ -598,6 +602,7 @@ dependencies = [
 [[package]]
 name = "hns-mining"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-consensus",
  "hns-mempool",
@@ -609,6 +614,7 @@ dependencies = [
 [[package]]
 name = "hns-node"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "anyhow",
  "axum",
@@ -636,6 +642,7 @@ dependencies = [
 [[package]]
 name = "hns-p2p"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-consensus",
  "hns-primitives",
@@ -650,6 +657,7 @@ dependencies = [
 [[package]]
 name = "hns-primitives"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "blake2",
  "serde",
@@ -660,6 +668,7 @@ dependencies = [
 [[package]]
 name = "hns-rpc"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-chain",
  "hns-mempool",
@@ -672,6 +681,7 @@ dependencies = [
 [[package]]
 name = "hns-secp256k1"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "cc",
  "thiserror",
@@ -680,6 +690,7 @@ dependencies = [
 [[package]]
 name = "hns-state"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-chain",
  "hns-consensus",
@@ -693,6 +704,7 @@ dependencies = [
 [[package]]
 name = "hns-store"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-primitives",
  "serde",
@@ -702,6 +714,7 @@ dependencies = [
 [[package]]
 name = "hns-sync"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-chain",
  "hns-p2p",
@@ -715,6 +728,7 @@ dependencies = [
 [[package]]
 name = "hns-urkel"
 version = "0.1.0"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=504d3fed035feb8a637ca09c4e0816b6e1144622#504d3fed035feb8a637ca09c4e0816b6e1144622"
 dependencies = [
  "hns-primitives",
  "serde",

@@ -2,11 +2,68 @@
 """Fail-closed structural checks for live-parent and unified supervision."""
 from __future__ import annotations
 import json
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
+expected_node_revision = '504d3fed035feb8a637ca09c4e0816b6e1144622'
+expected_node_source = (
+    'git+https://github.com/handshake-rs/hns-node-rs.git'
+    f'?rev={expected_node_revision}#{expected_node_revision}'
+)
+
+
+def canonical_node_package_roots() -> dict[str, Path]:
+    try:
+        completed = subprocess.run(
+            [
+                'cargo', 'metadata', '--locked', '--offline',
+                '--format-version', '1',
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        metadata = json.loads(completed.stdout)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        details = getattr(error, 'stderr', '') or str(error)
+        raise SystemExit(
+            f'cannot resolve canonical hns-node-rs packages: {details.strip()}'
+        )
+    wanted = {'hns-node', 'hns-rpc'}
+    packages = {
+        package.get('name'): package
+        for package in metadata.get('packages', [])
+        if isinstance(package, dict) and package.get('name') in wanted
+    }
+    missing = sorted(wanted - packages.keys())
+    if missing:
+        raise SystemExit(
+            'canonical hns-node-rs packages are missing: ' + ', '.join(missing)
+        )
+    roots: dict[str, Path] = {}
+    for name, package in packages.items():
+        source = package.get('source')
+        if source != expected_node_source:
+            raise SystemExit(
+                f'{name} resolves from {source!r}, expected {expected_node_source!r}'
+            )
+        roots[name] = Path(package['manifest_path']).resolve().parent
+    return roots
+
+
+node_package_roots = canonical_node_package_roots()
+external_files = {
+    '../hns-node-rs/crates/hns-node/src/lib.rs':
+        node_package_roots['hns-node'] / 'src/lib.rs',
+    '../hns-node-rs/crates/hns-node/src/shadow_sync.rs':
+        node_package_roots['hns-node'] / 'src/shadow_sync.rs',
+    '../hns-node-rs/crates/hns-rpc/src/lib.rs':
+        node_package_roots['hns-rpc'] / 'src/lib.rs',
+}
 files = {
     'crates/meshmine-parent-oracle/src/lib.rs': [
         'LiveParentOracle', 'ParentRpcSource', 'LiveParentPolicy',
@@ -74,7 +131,7 @@ files = {
     ],
 }
 for relative, needles in files.items():
-    path = root / relative
+    path = external_files.get(relative, root / relative)
     if not path.is_file():
         raise SystemExit(f'missing live-parent/unified-operator source: {relative}')
     text = path.read_text()

@@ -1,23 +1,19 @@
 # Standalone node boundary
 
 MeshMine's runtime and build-time Handshake authority is the standalone
-`hns-node-rs` workspace. In the ecosystem checkout it must be the sibling:
-
-```text
-work/
-├── hns-node-rs/
-└── MeshMine/
-```
-
-`meshmine-hsrd-bridge` consumes `hns-consensus`, `hns-mining`, `hns-node`, and
-`hns-primitives` from that sibling. No package in the MeshMine workspace may
-resolve those crates through the embedded `MeshMine/hsrd` tree.
+`hns-node-rs` workspace. `meshmine-hsrd-bridge` consumes `hns-consensus`,
+`hns-mining`, `hns-node`, and `hns-primitives` from the exact immutable
+`handshake-rs/hns-node-rs` Git revision recorded in its manifest and lockfile.
+No package in the MeshMine workspace may resolve those crates through the
+embedded `MeshMine/hsrd` tree or an unpinned branch.
 
 The embedded tree is excluded from the Cargo workspace. It is retained as
 historical extraction and qualification material while its fixture generators
 are reconciled with the standalone repository; it is not a runtime fallback.
-If the sibling workspace is missing or API-incompatible, Cargo fails. MeshMine
-must not silently switch back to the embedded copy.
+If the canonical revision is unavailable or API-incompatible, Cargo fails.
+MeshMine must not silently switch back to the embedded copy. A coordination
+checkout may use an explicit local Cargo patch for development, but that patch
+is never committed as release provenance.
 
 Run the offline boundary check from the MeshMine root:
 
@@ -26,8 +22,9 @@ python3 scripts/validate-external-node-boundary.py
 ```
 
 The check resolves locked Cargo metadata, verifies all four bridge dependencies
-against the standalone workspace, rejects any embedded `hsrd` workspace member,
-and rejects embedded runtime path dependencies anywhere in MeshMine.
+against the exact canonical URL and revision, rejects any embedded `hsrd`
+workspace member, and rejects embedded runtime path dependencies anywhere in
+MeshMine.
 
 ## Authority division
 

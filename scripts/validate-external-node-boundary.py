@@ -15,9 +15,16 @@ from pathlib import Path
 from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parents[1]
-EXTERNAL_NODE = (ROOT.parent / "hns-node-rs").resolve()
 EMBEDDED_NODE = (ROOT / "hsrd").resolve()
 BRIDGE = (ROOT / "crates" / "meshmine-hsrd-bridge" / "Cargo.toml").resolve()
+EXPECTED_NODE_REVISION = "504d3fed035feb8a637ca09c4e0816b6e1144622"
+EXPECTED_NODE_DEPENDENCY_SOURCE = (
+    "git+https://github.com/handshake-rs/hns-node-rs.git"
+    f"?rev={EXPECTED_NODE_REVISION}"
+)
+EXPECTED_NODE_RESOLVED_SOURCE = (
+    f"{EXPECTED_NODE_DEPENDENCY_SOURCE}#{EXPECTED_NODE_REVISION}"
+)
 REQUIRED_NODE_CRATES = {
     "hns-consensus",
     "hns-mining",
@@ -47,7 +54,6 @@ def cargo_metadata() -> dict:
                 "metadata",
                 "--locked",
                 "--offline",
-                "--no-deps",
                 "--format-version",
                 "1",
             ],
@@ -66,9 +72,6 @@ def cargo_metadata() -> dict:
 
 
 def main() -> None:
-    if not (EXTERNAL_NODE / "Cargo.toml").is_file():
-        fail(f"standalone node workspace is missing at {EXTERNAL_NODE}")
-
     metadata = cargo_metadata()
     packages = metadata.get("packages")
     members = metadata.get("workspace_members")
@@ -103,21 +106,37 @@ def main() -> None:
     if not isinstance(dependencies, list):
         fail("bridge dependency metadata is malformed")
     node_dependencies = {
-        dependency.get("name"): Path(dependency["path"]).resolve()
+        dependency.get("name"): dependency
         for dependency in dependencies
         if isinstance(dependency, dict)
         and dependency.get("name") in REQUIRED_NODE_CRATES
-        and isinstance(dependency.get("path"), str)
     }
     missing = sorted(REQUIRED_NODE_CRATES - node_dependencies.keys())
     if missing:
-        fail("bridge lacks standalone path dependencies: " + ", ".join(missing))
-    for name, path in sorted(node_dependencies.items()):
-        expected = EXTERNAL_NODE / "crates" / name
-        if path != expected:
-            fail(f"{name} resolves to {path}, expected {expected}")
-        if is_within(path, EMBEDDED_NODE):
-            fail(f"{name} still resolves through embedded hsrd")
+        fail("bridge lacks standalone node dependencies: " + ", ".join(missing))
+    for name, dependency in sorted(node_dependencies.items()):
+        source = dependency.get("source")
+        if source != EXPECTED_NODE_DEPENDENCY_SOURCE:
+            fail(
+                f"{name} resolves from {source!r}, expected "
+                f"{EXPECTED_NODE_DEPENDENCY_SOURCE!r}"
+            )
+        if dependency.get("path") is not None:
+            fail(f"{name} retains a mutable path override")
+
+    resolved_node_packages = {
+        package.get("name")
+        for package in packages
+        if isinstance(package, dict)
+        and package.get("name") in REQUIRED_NODE_CRATES
+        and package.get("source") == EXPECTED_NODE_RESOLVED_SOURCE
+    }
+    unresolved = sorted(REQUIRED_NODE_CRATES - resolved_node_packages)
+    if unresolved:
+        fail(
+            "lock graph does not resolve the exact canonical node revision: "
+            + ", ".join(unresolved)
+        )
 
     for package in packages:
         manifest = Path(package.get("manifest_path", "")).resolve()

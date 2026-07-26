@@ -10,6 +10,7 @@ trap 'rm -rf "$PYTHONPYCACHEPREFIX"' EXIT
 
 python3 scripts/validate-hsrd-static.py
 python3 scripts/validate-hsrd-source-handoff.py
+python3 scripts/validate-external-node-boundary.py
 python3 scripts/validate-work-fabric-source.py
 python3 scripts/validate-operator-service-source.py
 python3 scripts/validate-core-link-source.py
@@ -69,6 +70,7 @@ done
 python3 -m py_compile \
   scripts/validate-hsrd-static.py \
   scripts/validate-hsrd-source-handoff.py \
+  scripts/validate-external-node-boundary.py \
   scripts/validate-work-fabric-source.py \
   scripts/validate-operator-service-source.py \
   scripts/validate-core-link-source.py \

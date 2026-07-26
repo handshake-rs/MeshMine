@@ -1,6 +1,6 @@
 # HNS MeshMine
 
-HNS MeshMine is a research implementation of the no-hard-fork, independently templated Handshake mining overlay specified by [MM-0001 Core v2](MeshMine.md). It preserves ordinary HNS consensus. The Core/operator path now consumes authenticated native state only from the sibling standalone `hns-node-rs` workspace through the [external-node boundary](docs/external-node-boundary.md); `hsd` is pinned only as an offline fixture and differential oracle. The standalone node remains pre-authority, so Core fails closed until historical, invalid-corpus, reorg, state-root, and deployment readiness gates pass.
+HNS MeshMine is a research implementation of the no-hard-fork, independently templated Handshake mining overlay specified by [MM-0001 Core v2](MeshMine.md). It preserves ordinary HNS consensus. The Core/operator path now consumes authenticated native state only from an immutable canonical `handshake-rs/hns-node-rs` revision through the [external-node boundary](docs/external-node-boundary.md); `hsd` is pinned only as an offline fixture and differential oracle. The standalone node remains pre-authority, so Core fails closed until historical, invalid-corpus, reorg, state-root, and deployment readiness gates pass.
 
 The local reference implementation integrates components for WP1–WP13 and a deterministic local WP14 fault harness; the acceptance gaps are listed below rather than treated as completed work. It is not production-ready. The default simulation MPC backend uses a trusted coordinator; a separate artifact-pinned distributed MP-SPDZ research adapter passes WP7 locally but is not integrated into a production daemon or independently audited. Goldshell/HS3 behavior has not been physically verified, the overlay harness is not a public multi-operator deployment, and the object graph has not received independent protocol review.
 
@@ -38,6 +38,7 @@ in [VERIFICATION.md](VERIFICATION.md).
 ```sh
 npm ci --prefix hsd-oracle --ignore-scripts
 npm run audit --prefix hsd-oracle
+cargo fetch --locked
 python3 scripts/validate-hsrd-static.py
 python3 scripts/validate-hsrd-source-handoff.py
 python3 scripts/validate-external-node-boundary.py

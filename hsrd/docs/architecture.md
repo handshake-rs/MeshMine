@@ -1,5 +1,11 @@
 # Architecture
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current status; the prose below is extraction-era
+> context.
+
 `hsrd` is a purpose-built HNS mining full node for MeshMine. Its architecture
 optimizes tail latency and isolation while preserving the requirement for exact
 Handshake consensus behavior.

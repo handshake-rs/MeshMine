@@ -1,5 +1,10 @@
 # Testing strategy
 
+> **Archived embedded snapshot.** Commands below retain their extraction-era
+> evidence scope; this excluded tree is not MeshMine's runtime or build
+> authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md).
+
 Full mainnet semantic-state comparison is specified in
 [`state-parity.md`](state-parity.md). The paired exporters use a shared
 constant-space transcript for UTXOs and names; deployment parity and

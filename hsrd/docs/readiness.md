@@ -1,5 +1,11 @@
 # Readiness status
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. Its readiness prose predates later standalone
+> qualifications. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current status.
+
 Status labels describe source maturity, not production authority.
 
 ## Scope and primitives — foundation present

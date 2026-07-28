@@ -1,6 +1,6 @@
 # HNS MeshMine
 
-HNS MeshMine is a research implementation of the no-hard-fork, independently templated Handshake mining overlay specified by [MM-0001 Core v2](MeshMine.md). It preserves ordinary HNS consensus. The Core/operator path now consumes authenticated native state only from an immutable canonical `handshake-rs/hns-node-rs` revision through the [external-node boundary](docs/external-node-boundary.md); `hsd` is pinned only as an offline fixture and differential oracle. The standalone node remains pre-authority, so Core fails closed until historical, invalid-corpus, reorg, state-root, and deployment readiness gates pass.
+HNS MeshMine is a research implementation of the no-hard-fork, independently templated Handshake mining overlay specified by [MM-0001 Core v2](MeshMine.md). It preserves ordinary HNS consensus. The Core/operator path consumes authenticated native state only from standalone `handshake-rs/hns-node-rs` revision `504d3fed035feb8a637ca09c4e0816b6e1144622` through the [external-node boundary](docs/external-node-boundary.md); `hsd` is pinned only as an offline fixture and differential oracle. That consumed node revision has complete functional consensus readiness, including historical replay and the invalid corpus. Its base snapshot initializes `release_stage: "pre-authority"`, while live native RPC replaces that value with a configuration-specific diagnostic stage. Its conditional canary permit can activate only at a fully qualified live tip. Core still fails closed whenever the snapshot is stale, unsynchronized, unauthenticated, or not durably authoritative, and MeshMine's own production eligibility remains false.
 
 The local reference implementation integrates components for WP1–WP13 and a deterministic local WP14 fault harness; the acceptance gaps are listed below rather than treated as completed work. It is not production-ready. The default simulation MPC backend uses a trusted coordinator; a separate artifact-pinned distributed MP-SPDZ research adapter passes WP7 locally but is not integrated into a production daemon or independently audited. Goldshell/HS3 behavior has not been physically verified, the overlay harness is not a public multi-operator deployment, and the object graph has not received independent protocol review.
 
@@ -18,7 +18,7 @@ The local reference implementation integrates components for WP1–WP13 and a de
 | Gateway | bounded loopback-only HandyStratum HNS adapter plus domain-separated operator/gateway/Core handoff objects, signed capture/disposition/drain evidence, gap-free sequence fencing, atomic evidence/share/work admission, and a live-parent-qualified authenticated Core stream under the unified local supervisor; hardware profiles remain unverified |
 | Heterogeneous work fabric | portable durable `meshmine-work` planner with capability discovery, non-overlapping ExtraNonce2 or nonce leases, generation-based prepare/activate/cancel, exact scalar HNS capture verification, stable capture deduplication, durable downstream admission, bounded adaptive edge targets, and HandyStratum/simulator backend boundaries; architecture-specific hash kernels remain optional |
 | Operator service and UI | `meshmine-corelink-operatord` combines concurrent loopback HandyStratum sessions, exact signed Core bundle import, Core-side `ShareV2` construction, durable terminal receipts, signed drains, Core reconnect backoff, deterministic safe modes and fallback hysteresis, trust-bound storage, bounded event history, graceful shutdown, read-only health/status API, and the embedded responsive dashboard; production hardware qualification remains open |
-| Native mining node | lean `hsrd` workspace with exact HNS network/genesis parameters, unsigned 256-bit chainwork, difficulty/timestamp admission, native pinned secp256k1 verification, bounded witness/script foundations, covenant linkage, contextual non-claim name transitions, exact HSD `NameState` encoding, correctness-first Urkel roots and proofs, durable content-addressed authenticated nodes with path-local immutable mutation and exact proofs, network-interval root pins, validated retained-root compaction with opt-in interval-gated startup scheduling and atomic checkpoints, opt-in HSD-horizon undo retirement with pruning-aware root pins and reorg rejection, root-checked durable materialized snapshots, durable pre/post root binding, sequence-consistent RocksDB snapshots, alternate-branch retention, strict greater-work fork choice, one-batch reorganizations, exact bounded HNS wire codecs, native Brontide peers with key-bearing seed discovery, a durable bounded address book, and restart-durable HSD-style IP bans, atomic headers-first scheduling with native mainnet header/body/active-state sync and independent BIP9/script-policy derivation, stateless body workers, non-active body retention, restart checkpoints, a bounded generation-indexed mempool, deterministic HNS-aware future templates, durable solved-block publication intents, local-first parallel critical fan-out, authenticated RPC enforcement, and one coherent parent-authority snapshot consumed as the Core/operator path's sole runtime parent source. Complete historical claim/airdrop and contextual consensus parity, deployment-scale compaction priority and RocksDB mid-commit crash qualification, full active-state IBD, production contextual transaction admission, and native mainnet authority remain open |
+| Native mining node | The external bridge pins standalone `hns-node-rs` revision `504d3fed035feb8a637ca09c4e0816b6e1144622`, which includes complete functional readiness, the qualified height-339,654 stopped state, the 288-block retained rollback horizon, a conditional canary permit path, bounded mempool/templates, and local-first solved-block publication. Its base `pre-authority` release stage is replaced in live native RPC by a configuration-specific diagnostic label; neither is an authority grant. MeshMine accepts only one authenticated coherent parent-authority snapshot and remains fail closed on any runtime gate failure. Standalone HEAD `42c76a622f2600a833835b4ca737d3350f73af52` additionally contains live canonical Denuo negotiation, role-safe HIP-76 sessions, and the standalone CI release gate; MeshMine does not consume those later features until its manifest pin is deliberately advanced and requalified. Deployment-scale compaction/crash, sustained WAN/reorg, latency, physical ASIC, and independent-review work remain open. |
 | Committees | exact risk calculator, role-separated delayed sortition, bootstrap phases, roster verification, fault exclusion and liveness replacement |
 | Networking and storage | native authenticated QUIC streams with separately reserved fast-path, accounting, availability, and settlement callback, live-queue, replay, and per-peer send capacity; bounded static peers with TLS/transport-key pins and staged certificate rotation, reconnect-supervised signed gossip with bounded durable at-least-once catch-up, exact-wrapper publication-intent recovery, atomic settled-prefix compaction and source suppression, request quotas, exact share ingress with local-`hsd` context evidence, one-transaction share/work/observation/active-index admission, guarded MaskSession inventory generation, one-transaction canonical Disconnect/MMDB/parent/session/head/index effects, source-bound normal/reorg session closure, bounded active-share and open-receipt restart recovery with resumable fail-closed legacy migrations, partition harness, clock policy, immutable redb journal and crash-safe signing guards |
 | Observability | bounded schema-v3 JSON evidence for durable work/template/body/payout/reorg/telemetry distributions and static-peer delivery capacity/backlog/intent/migration/compaction/tombstone state, explicit per-metric coverage and unavailable-evidence labels |
@@ -32,8 +32,9 @@ Detailed claim boundaries and gaps are in [implementation-status.md](specs/imple
 
 Requirements are Rust 1.89+, Node.js, and either the pinned oracle dependency or an `hsd` checkout. The oracle package pins `hsd` commit `698e252ebc7b5c1dd0a9587e342fdd153d020ae4`.
 
-The latest complete local gate results and qualification boundary are recorded
-in [VERIFICATION.md](VERIFICATION.md).
+The dated 2026-07-20–22 local gate results are preserved in
+[VERIFICATION.md](VERIFICATION.md). They are historical evidence rather than a
+claim about the current external-node pin.
 
 ```sh
 npm ci --prefix hsd-oracle --ignore-scripts
@@ -286,14 +287,18 @@ cargo run --locked -p meshmine-corelink-operatord -- serve \
 Example configurations are in `specs/core-link-*.example.json`. See
 [core-link.md](docs/core-link.md),
 [gateway-core-handoff.md](specs/gateway-core-handoff.md), and
-[asic-profiles.md](specs/asic-profiles.md). Native mainnet authority and
-production eligibility remain disabled.
+[asic-profiles.md](specs/asic-profiles.md). MeshMine production eligibility
+remains disabled. The consumed node revision has complete functional readiness
+and a conditional canary permit path. Its base snapshot uses
+`pre-authority`, while live native RPC reports the mode-specific stage.
 
-The native mainnet canary profile can now be started for synchronization and
-readiness observation without HSD shadowing. Its explicit flag cannot energize
-ASIC work until the synchronized tip, durable validation state, and every
-native consensus gate are authoritative; the current source still refuses that
-transition. See [hsrd/docs/mainnet-canary.md](hsrd/docs/mainnet-canary.md).
+The native mainnet canary profile can synchronize and authorize its private
+mining stream without HSD shadowing only when the live tip, durable validation
+state, and every consensus gate are authoritative. MeshMine adds its own
+fail-closed Core/operator and production-eligibility checks. See the
+[external-node boundary](docs/external-node-boundary.md); the embedded
+`hsrd/docs/mainnet-canary.md` is an archived pre-extraction snapshot, not the
+runtime node documentation.
 
 ### Offline active-receipt migration
 

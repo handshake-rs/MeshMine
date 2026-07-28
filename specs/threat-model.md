@@ -2,6 +2,13 @@
 
 This is the implementation companion to MM-0001 sections 3 and 20. “Verified” below always means within the local research model.
 
+Node-readiness references below describe fail-closed runtime loss or mismatch,
+not an incomplete source matrix. MeshMine pins external node revision
+`504d3fed035feb8a637ca09c4e0816b6e1144622`; all of its functional
+readiness fields are true, its conditional canary permit still depends on a
+coherent live tip, and its base `pre-authority` stage is replaced in live
+native RPC by a mode-specific diagnostic label.
+
 | Package | Defends against / enforces | Trust boundary and residual risk |
 |---|---|---|
 | `meshmine-hns` | Bitcoin/HNS confusion, endian errors, wrong padding/targets/roots | `hsd` is the contextual oracle; Rust is not an independent covenant implementation. |

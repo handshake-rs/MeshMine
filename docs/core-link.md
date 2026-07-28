@@ -1,11 +1,14 @@
 # Authenticated Core link and live parent qualification
 
-Status: source-complete pre-production handoff. Native mainnet authority remains disabled.
+Status: source-complete pre-production handoff. The pinned standalone node has
+complete functional readiness and a conditional canary permit path. Its base
+snapshot uses `pre-authority`, live native RPC reports a mode-specific stage,
+and MeshMine production mode remains disabled.
 
-The explicit native mainnet canary can now run synchronization and report its
-gates, but Core still rejects its work until `hsrd` reports the synchronized,
-all-readiness `mainnet_canary_active` state. This introduces no HSD runtime or
-shadow dependency.
+The explicit native mainnet canary can synchronize and report its gates. Core
+accepts work only while `hsrd` reports the synchronized, all-readiness
+`mainnet_canary_active` state and the exact durable tip remains authoritative.
+This introduces no HSD runtime or shadow dependency.
 
 ## Purpose
 
@@ -220,14 +223,16 @@ separately.
 - Mainnet additionally requires hsrd's explicit canary flag, exact
   header/active-state synchronization, every individual readiness bit, and the
   stricter mainnet freshness/cache policy.
-- `hsrd` remains pre-authority, so its current incomplete readiness response
-  deliberately makes Core reject all authority-bearing work.
+- The pinned node revision reports complete source readiness. Any later loss,
+  mismatch, stale snapshot, or incomplete durable authority state still makes
+  Core reject all authority-bearing work.
 - The authenticated hsrd RPC transport is local HTTP; public or remote
   deployment is not part of this profile.
 - The Core server accepts one authenticated operator connection at a time.
 - Physical ASIC job-switch, stale-work, reconnect, and fallback behavior remain
   unqualified.
-- Complete historical consensus parity and native mainnet authority remain
-  disabled.
+- Broader historical/WAN/reorganization campaigns and MeshMine production
+  eligibility remain open; they do not rewrite the pinned node's complete
+  functional readiness or make any release-stage diagnostic authoritative.
 - Rust formatting, compilation, Clippy, unit tests, and release builds remain
   mandatory CI gates.

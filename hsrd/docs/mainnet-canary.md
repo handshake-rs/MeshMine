@@ -1,5 +1,10 @@
 # Native mainnet mining canary
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. Commands below reproduce extraction-era behavior; use the
+> canonical standalone repository for deployment. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md).
+
 The mainnet canary is an explicit fail-closed authority profile. It uses native
 Brontide peers, native active-state synchronization, native templates, and the
 native MeshMine gateway bridge. HSD is not started or queried at runtime; its

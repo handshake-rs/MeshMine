@@ -1,5 +1,10 @@
 # Reference index
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current documentation.
+
 ## Precedence
 
 1. Existing Handshake mainnet consensus and serialized chain history.

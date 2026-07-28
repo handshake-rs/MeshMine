@@ -1,7 +1,9 @@
 # Unified operator service
 
-Status: source-complete pre-production handoff. Hardware and authority
-qualification remain pending.
+Status: source-complete pre-production handoff. The external node has complete
+functional readiness and a conditional canary permit path. Its base snapshot
+uses `pre-authority`, live native RPC reports a mode-specific stage, and
+MeshMine hardware, integration, and production eligibility remain pending.
 
 ## Purpose
 
@@ -132,7 +134,7 @@ The embedded dashboard remains loopback-only and read-only. It displays:
 - credential health;
 - capture and rejection counters;
 - recent durable events;
-- explicit pre-authority status.
+- explicit MeshMine production-eligibility and authority-gate status.
 
 Endpoints:
 
@@ -181,6 +183,8 @@ High-rate gateway events are aggregated per supervisor cycle.
 - Core and operator are local single-host processes in this profile.
 - Mask, settlement, overlay, and solved-block supervision are not yet merged
   into one public release process.
-- Native mainnet authority remains disabled.
+- The pinned external node may provide native mainnet authority only through
+  its synchronized canary; this service still rejects `production: true` and
+  remains a pre-production MeshMine integration.
 - Rust compiler and runtime qualification remain mandatory in CI and on target
   ARM64/x86-64 hosts.

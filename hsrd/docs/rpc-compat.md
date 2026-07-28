@@ -1,5 +1,10 @@
 # Bounded control and differential API
 
+> **Archived embedded snapshot.** API versions below describe the excluded
+> extraction-era tree, not MeshMine's pinned external node. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for current
+> integration scope.
+
 Native template construction and candidate admission do not use this
 interface. The separately built MeshMine Core/operator process uses the
 hsrd-specific read-only `getparentauthority` method as its authenticated

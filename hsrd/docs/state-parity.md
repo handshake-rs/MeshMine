@@ -1,5 +1,10 @@
 # Semantic state parity
 
+> **Archived embedded snapshot.** Evidence procedures below retain their
+> extraction-era scope; this excluded tree is not MeshMine's runtime or build
+> authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md).
+
 The full-state comparison is a qualification boundary, not an HSD storage
 compatibility layer. It compares the state that can affect independent mining
 and consensus while leaving producer-specific indexes and archival fields out

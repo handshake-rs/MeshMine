@@ -1,5 +1,11 @@
 # hsd decomposition for a mining full node
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current status; the prose below is extraction-era
+> context.
+
 This is the source-level boundary for replacing `hsd` without cloning its
 product surface. It was derived from the pinned production/oracle checkout at
 commit `698e252ebc7b5c1dd0a9587e342fdd153d020ae4`.

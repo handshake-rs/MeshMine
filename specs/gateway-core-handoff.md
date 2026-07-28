@@ -147,6 +147,10 @@ The following remain mandatory:
   and drain evidence;
 - independently review the new bundle, transport, receipt, and transition state
   machines; and
-- close every remaining MM-0001 production and native-authority gate.
+- close every remaining MM-0001 production, hardware, operational, and
+  independent-assurance gate. The pinned node already has complete functional
+  readiness and a conditional canary permit path. Its base snapshot uses
+  `pre-authority`, while live native RPC reports a mode-specific diagnostic
+  stage.
 
 Until those gates pass, gateway production eligibility remains false.

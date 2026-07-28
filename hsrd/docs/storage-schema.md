@@ -1,5 +1,9 @@
 # Storage schema
 
+> **Archived embedded snapshot.** This schema prose describes the excluded
+> extraction-era tree, not MeshMine's pinned external dependency. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md).
+
 `hns-store` owns persistence. Runtime crates use typed `Store`, `ReadSnapshot`,
 and `WriteBatch` traits and do not issue raw RocksDB calls directly. Every
 consensus-critical transition is prepared against an immutable snapshot and

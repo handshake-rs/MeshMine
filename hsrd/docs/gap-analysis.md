@@ -1,5 +1,11 @@
 # Gap analysis
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current status; the prose below is extraction-era
+> context.
+
 ## Implemented evidence
 
 ### Primitive, chain, and storage foundation

@@ -1,5 +1,13 @@
 # hsrd
 
+> **Archived embedded snapshot.** MeshMine does not build or run this excluded
+> tree. It preserves extraction-era source and qualification context from source
+> commit `67a11290d410dc88113c4c3516ce9d22e8640a49`. Current integration uses
+> external `hns-node-rs` revision
+> `504d3fed035feb8a637ca09c4e0816b6e1144622`; see the
+> [standalone-node boundary](../docs/external-node-boundary.md). Statements below
+> are historical unless that boundary says otherwise.
+
 `hsrd` is the lean Handshake mining full node being built for MeshMine. Its
 product boundary is the smallest complete consensus, state, synchronization,
 template, and relay path required to mine valid HNS blocks with predictable

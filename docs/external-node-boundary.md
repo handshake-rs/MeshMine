@@ -4,6 +4,12 @@ MeshMine's runtime and build-time Handshake authority is the standalone
 `hns-node-rs` workspace. `meshmine-hsrd-bridge` consumes `hns-consensus`,
 `hns-mining`, `hns-node`, and `hns-primitives` from the exact immutable
 `handshake-rs/hns-node-rs` Git revision recorded in its manifest and lockfile.
+The current MeshMine pin is
+`504d3fed035feb8a637ca09c4e0816b6e1144622`. That revision includes
+complete consensus readiness, the qualified stopped-state/retained-rollback
+evidence, and the conditional native mainnet canary permit path. Its base
+snapshot initializes `release_stage: "pre-authority"`; live native RPC
+replaces it with a configuration-specific diagnostic stage.
 No package in the MeshMine workspace may resolve those crates through the
 embedded `MeshMine/hsrd` tree or an unpinned branch.
 
@@ -47,8 +53,13 @@ or name-tree batching with repeated generic RPC calls.
   publication.
 - The node and MeshMine revisions are separate release inputs and must both be
   recorded in final provenance.
-- The standalone node does not yet expose the required HIP 76/77/78 transport
-  policy interface. MeshMine therefore exposes no substitute policy and never
-  silently enables HNSR or provider roles.
+- The pinned `504d3fed035feb8a637ca09c4e0816b6e1144622` node does not
+  expose the required HIP 76/77/78 transport policy interface. Standalone
+  `hns-node-rs` commit
+  `42c76a622f2600a833835b4ca737d3350f73af52` adds canonical Denuo
+  negotiation and a role-safe HIP-76 live-session boundary, but not HIP-77/78
+  integration. MeshMine does not consume those later changes until its manifest
+  pin is deliberately advanced and the boundary is requalified. It exposes no
+  substitute policy and never silently enables HNSR or provider roles.
 - The existing performance commands are useful component gates, but the full
   before/after matrix required by the ecosystem plan remains release-blocking.

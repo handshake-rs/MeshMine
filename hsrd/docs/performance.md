@@ -1,5 +1,10 @@
 # Native synchronization and mining-path performance
 
+> **Archived embedded snapshot.** Measurements below retain their original
+> scope and date; this excluded tree is not MeshMine's runtime or build
+> authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md).
+
 Performance work must preserve consensus, crash consistency, and reorganization
 atomicity. The target is to remove redundant storage and coordination work until
 the irreducible costs are block decoding, cryptographic verification,

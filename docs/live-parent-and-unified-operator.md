@@ -32,8 +32,11 @@ hardware-specific hashing below the assignment boundary.
 On mainnet, Core additionally requires the explicit native canary flag, an
 exact best-header/active-state hash-height-chainwork match, every individual
 consensus-readiness bit, a current authoritative tip, and a tightly bounded
-freshness/cache window. The current incomplete readiness bits intentionally
-prevent gateway activation while native synchronization and qualification run.
+freshness/cache window. The pinned node revision has complete source readiness;
+gateway activation is still prevented whenever any live readiness, freshness,
+synchronization, or durable-authority value is absent or changes. The pinned
+node's base snapshot uses `pre-authority`, while live native RPC reports a
+configuration-specific diagnostic stage; neither is an authority grant.
 
 ## Failure behavior
 

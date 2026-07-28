@@ -1,4 +1,12 @@
-# Integration verification
+# Historical integration verification (2026-07-20–22)
+
+> This is a dated evidence record. Its measurements, schema/API observations,
+> dependency count, and release conclusion describe the 2026-07-20–22 tree and
+> are not silently rewritten as current results. MeshMine now consumes external
+> `hns-node-rs` revision
+> `504d3fed035feb8a637ca09c4e0816b6e1144622`; see
+> [the external-node boundary](docs/external-node-boundary.md) for current
+> integration scope.
 
 This source tree was verified locally on 2026-07-20 from `main` immediately
 before the integration commit.
@@ -465,8 +473,16 @@ separately.
 ## Qualification boundary
 
 This result verifies the integrated research source tree and its reproducible
-local gates. It does not certify production readiness. HSRD remains
-pre-authority, defaults to fail-closed native synchronization, and cannot yet
-provide native mainnet mining authority. Hardware, WAN, external protocol
-review, complete historical and invalid-corpus parity, and the other gaps in
-[HSRD readiness](hsrd/docs/readiness.md) remain release requirements.
+local gates as of the dates above. It does not certify production readiness.
+At that time the embedded HSRD conclusion was pre-authority and could not yet
+provide native mainnet mining authority.
+
+That functional-readiness conclusion has since been superseded: MeshMine's
+pinned external node reports every consensus-readiness field true and has a
+conditional mainnet canary permit path backed by the stopped-state,
+invalid-corpus, and retained-rollback qualifications. Its base snapshot
+initializes `release_stage: "pre-authority"`, while live native RPC replaces
+that value with a configuration-specific diagnostic stage. MeshMine production
+eligibility remains false. Hardware, WAN, external protocol review, and the
+other MeshMine assurance gates remain release work.
+Later standalone Denuo/HIP-76 changes are outside MeshMine's current pin.

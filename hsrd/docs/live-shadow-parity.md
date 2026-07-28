@@ -1,5 +1,11 @@
 # Optional offline HSD differential parity
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current status; the prose below is extraction-era
+> context.
+
 This legacy-named comparison tool is optional offline qualification. Native
 mainnet operation neither launches nor queries HSD and does not require this
 tool to remain running. When an operator deliberately runs a bounded audit, it

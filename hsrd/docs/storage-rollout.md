@@ -1,5 +1,10 @@
 # Storage rollout, migration, and fallback
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current operational documentation.
+
 This procedure is deliberately offline. It preserves one known-good data root
 before changing schema/profile markers or replacing inline block and undo
 values. Never run the maintenance command against a node that did not complete

@@ -1,5 +1,11 @@
 # Security model
 
+> **Archived embedded snapshot.** This excluded tree is not MeshMine's runtime
+> or build authority. See the
+> [standalone-node boundary](../../docs/external-node-boundary.md) for the pinned
+> external revision and current status; the prose below is extraction-era
+> context.
+
 `hsrd` verifies consensus locally. Peers, snapshots, control clients, MeshMine
 inputs, caches, fixtures, synchronization checkpoints, and local databases are
 untrusted until promoted by an explicit validation stage. Until every parity

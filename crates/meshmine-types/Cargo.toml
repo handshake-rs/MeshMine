@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "MM-0001 Core v2 object model and canonical identifiers"
 
 [dependencies]

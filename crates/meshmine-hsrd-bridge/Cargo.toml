@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "Exact standalone hns-node-rs-to-MeshMine mining authorization bridge"
 
 [dependencies]

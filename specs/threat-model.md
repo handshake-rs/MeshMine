@@ -43,12 +43,13 @@ monitoring.
 
 ## Decentralized transport
 
-Authenticated QUIC and durable replay are implemented as a library, but there
-is not yet a release-ready daemon composing discovery, full application
-validation, inventory reconciliation, and every committee workflow. Static
-identity pins establish trusted channels; they do not establish automatic
-revocation, eclipse resistance, organizational independence, or public-WAN
-availability.
+Authenticated QUIC, durable replay, and a multi-operator daemon are implemented.
+The daemon admits complete signed operator records and carries HNSR through a
+separately bounded callback into the profile-aware relay/rendezvous state
+machine. Static identity and certificate pins establish trusted channels; they
+do not establish automatic revocation, eclipse resistance, organizational
+independence, or public-WAN availability. Other gossip topics remain
+fail-closed until their complete authority workflows are composed.
 
 Settlement work cannot consume the fast-path reserved capacity. Nevertheless,
 application actors, storage budgets, peer discovery, live metrics, and the
@@ -73,7 +74,8 @@ traffic privacy remain deployment responsibilities.
 ## Production blockers
 
 - No physical ASIC qualification or long-duration workload evidence.
-- No composed public multi-operator daemon or live HNSR route runtime.
+- No independent public-WAN operating evidence for the new multi-operator
+  daemon and live HNSR route runtime.
 - No independently verified extension/mobile HNSA integration.
 - No public partition, churn, eclipse, or resource-exhaustion campaign.
 - No independent protocol and implementation security review.

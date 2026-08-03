@@ -8,8 +8,9 @@ does not embed a node implementation or JavaScript consensus oracle.
 The current code is not production-ready. The Rust protocol components and the
 authenticated native node/Core/operator path are substantial, and the local
 HNSA/HNSR named-route adapter is specified and implemented in `handshake-rs`.
-The public multi-operator daemon, runtime route publication/lookup, independent
-security review, and physical ASIC qualification are still release gates.
+The public multi-operator daemon and live HNSR reservation/publication/lookup
+path are implemented. Independent deployment evidence, security review, and
+physical ASIC qualification are still release gates.
 
 ## Current architecture
 
@@ -26,6 +27,10 @@ hns-node-rs authoritative mining snapshot
        v                     v
 HandyStratum ASIC      signed public statistics
 private LAN ingress    HTML + bounded JSON feed
+                             |
+                             v
+                 meshmine-operatord peers
+             authenticated QUIC + live HNSR
 ```
 
 The main implemented boundaries are:
@@ -39,8 +44,10 @@ The main implemented boundaries are:
 - `meshmine-gateway`: bounded HandyStratum parsing and device profiles. Remote
   ASICs require an explicit private/link-local CIDR allowlist.
 - `meshmine-network`: authenticated QUIC transport, lane isolation, bounded
-  admission, replay, and peer accounting. A clean public multi-operator daemon
-  has not yet composed this transport with every authority workflow.
+  admission, replay, peer accounting, and a separately bounded HNSR stream.
+- `meshmine-operatord`: pinned multi-operator QUIC sessions, durable signed
+  operator-record replacement, live HNSR relay/rendezvous service, and optional
+  fail-closed reserve/publish/verified-read-back cycles for `pool-stats`.
 - `meshmine-pool-stats`: endpoint-signed, bounded statistics objects associated
   with the draft HNSA identity chain implemented in `handshake-rs`.
 
@@ -63,9 +70,12 @@ review. The local companion HIP draft now defines version-2 named routes that
 carry the exact HNSA authorization and delegation while leaving unnamed route
 version 1 unchanged. `handshake-rs` implements that adapter with stable
 service-derived route keys, profile-aware tickets, bounded storage admission,
-and complete client verification. MeshMine's current operator still serves a
-direct HTTP feed; runtime HNSR reservation, publication, lookup, and inner
-session composition remain to be wired into the multi-operator daemon.
+and complete client verification. `meshmine-operatord` pins that
+implementation revision and carries canonical HNSR packets only after mutual
+QUIC authentication. The public-statistics route publisher reloads the HNSA
+authorization, delegation, and current authority context before every cycle,
+persists a new route sequence before signing, and requires a verified read-back
+from each rendezvous peer.
 
 See [specs/pool-stats-profile.md](specs/pool-stats-profile.md) for the private
 profile used while an official HNSA profile assignment is pending.
@@ -151,8 +161,8 @@ Before calling the system production-ready, all of the following remain
 required:
 
 - compose and operate the new multi-operator daemon against independent nodes;
-- compose the implemented HNSA/HNSR named-route boundary with live reservation,
-  publication, lookup, and endpoint-authenticated pool-statistics sessions;
+- operate live HNSR publication across independent relays/rendezvous nodes and
+  measure renewal, expiry, read-back, partition, and authority-rotation behavior;
 - publish and pin the HNSA implementation for verified extension/mobile views;
 - complete physical ASIC acceptance and sustained-load testing;
 - run public-WAN partition, replay, churn, eclipse, and resource-exhaustion

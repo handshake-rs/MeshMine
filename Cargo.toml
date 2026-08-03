@@ -3,6 +3,7 @@ members = [
   "bins/meshmine-cored",
   "bins/meshmine-corelink-operatord",
   "bins/meshmine-gateway",
+  "bins/meshmine-operatord",
   "bins/meshmine-workd",
   "crates/meshmine-body",
   "crates/meshmine-committee-risk",
@@ -58,6 +59,7 @@ serde_json = "1.0.140"
 sha3 = "0.10.8"
 thiserror = "2.0.12"
 tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+zeroize = "1.8.1"
 
 [profile.release]
 # Consensus-adjacent accounting and sequence arithmetic must fail instead of

@@ -2226,6 +2226,7 @@ HNS-MeshMine/
 │   ├── meshmine-cored/
 │   ├── meshmine-corelink-operatord/
 │   ├── meshmine-gateway/
+│   ├── meshmine-operatord/
 │   └── meshmine-workd/
 ├── mpc/
 │   ├── README.md

@@ -114,7 +114,7 @@ pub struct BlockBodyPackageV2 {
     pub claim_airdrop_fees: u64,
     pub operator_fee_value: u64,
     pub work_service_subsidy_value: u64,
-    pub hsd_validation_result_hash: Hash256,
+    pub consensus_validation_result_hash: Hash256,
     pub operator_signature: SignatureBytes,
 }
 
@@ -139,7 +139,7 @@ pub struct BodyAvailabilityCertificateV2 {
     pub descriptor_id: Hash256,
     pub parent_hash: Hash256,
     pub parent_height: u32,
-    pub hsd_validation_result_hash: Hash256,
+    pub consensus_validation_result_hash: Hash256,
     pub challenge_round: u64,
     pub challenge_transcript_root: Hash256,
     pub signer_set: SignatureSet,
@@ -635,7 +635,7 @@ impl UnsignedObject for BlockBodyPackageV2 {
         encoder.u64(self.claim_airdrop_fees);
         encoder.u64(self.operator_fee_value);
         encoder.u64(self.work_service_subsidy_value);
-        encoder.fixed(&self.hsd_validation_result_hash);
+        encoder.fixed(&self.consensus_validation_result_hash);
     }
 }
 
@@ -675,7 +675,7 @@ impl CanonicalDecode for BlockBodyPackageV2 {
             claim_airdrop_fees: decoder.u64()?,
             operator_fee_value: decoder.u64()?,
             work_service_subsidy_value: decoder.u64()?,
-            hsd_validation_result_hash: decoder.array()?,
+            consensus_validation_result_hash: decoder.array()?,
             operator_signature: SignatureBytes::decode(decoder)?,
         };
         result
@@ -733,7 +733,7 @@ impl UnsignedObject for BodyAvailabilityCertificateV2 {
         encoder.fixed(&self.descriptor_id);
         encoder.fixed(&self.parent_hash);
         encoder.u32(self.parent_height);
-        encoder.fixed(&self.hsd_validation_result_hash);
+        encoder.fixed(&self.consensus_validation_result_hash);
         encoder.u64(self.challenge_round);
         encoder.fixed(&self.challenge_transcript_root);
     }
@@ -755,7 +755,7 @@ impl CanonicalDecode for BodyAvailabilityCertificateV2 {
             descriptor_id: decoder.array()?,
             parent_hash: decoder.array()?,
             parent_height: decoder.u32()?,
-            hsd_validation_result_hash: decoder.array()?,
+            consensus_validation_result_hash: decoder.array()?,
             challenge_round: decoder.u64()?,
             challenge_transcript_root: decoder.array()?,
             signer_set: SignatureSet::decode(decoder)?,

@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Loopback-only local HandyStratum gateway process for MeshMine"
+description = "Private-network allowlisted HandyStratum gateway process for MeshMine"
 
 [[bin]]
 name = "meshmine-gateway"
@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 hex.workspace = true
+ipnet.workspace = true
 meshmine-gateway = { path = "../../crates/meshmine-gateway" }
 meshmine-hns = { path = "../../crates/meshmine-hns" }
 meshmine-storage = { path = "../../crates/meshmine-storage" }

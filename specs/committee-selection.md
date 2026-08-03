@@ -1,6 +1,6 @@
-# WP13 research committee selection profile
+# WP13 evaluation committee selection profile
 
-Dynamic selection is implemented as a research profile, not a frozen mainnet
+Dynamic selection is implemented as an evaluation profile, not a frozen mainnet
 algorithm. Eligibility leaves are sorted by operator public key and commit to
 finalized work plus a role mask. The snapshot root must be finalized at least
 the configured lookback before the selection anchor. Entropy must begin after

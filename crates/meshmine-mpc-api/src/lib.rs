@@ -1,6 +1,6 @@
-//! Versioned MPC boundary and research-only timed VSS opening backend.
+//! Versioned MPC boundary and test-only timed VSS opening backend.
 //!
-//! The research backend uses a transient trusted setup coordinator to create
+//! The test backend uses a transient trusted setup coordinator to create
 //! constrained mask material, then distributes Shamir shares. Committee
 //! members receive only their own share. This is suitable for staged regtest
 //! fault testing, not a production malicious-secure MPC claim.
@@ -27,7 +27,7 @@ const SHARE_COMMITMENT_DOMAIN: &str = "meshmine/opening-share-commitment/v2";
 const SHARE_SIGNATURE_DOMAIN: &str = "meshmine/mask-opening-share/v2";
 const SESSION_BINDING_DOMAIN: &str = "meshmine/mask-vss-session/v2";
 const TRANSCRIPT_DOMAIN: &str = "meshmine/mask-vss-transcript/v2";
-const RESEARCH_RNG_DOMAIN: &str = "meshmine/mask-vss-rng/v2";
+const VSS_RNG_DOMAIN: &str = "meshmine/mask-vss-rng/v2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BackendSecurityProperties {
@@ -53,7 +53,7 @@ pub struct SetupRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResearchSetup {
+pub struct VssSetup {
     pub session_binding: Hash256,
     pub parent_hash: Hash256,
     pub mask_hash: Hash256,
@@ -201,15 +201,11 @@ pub enum MpcError {
 pub trait MpcBackend {
     fn security_properties(&self) -> BackendSecurityProperties;
 
-    fn setup(
-        &self,
-        request: &SetupRequest,
-        members: &[SigningKey],
-    ) -> Result<ResearchSetup, MpcError>;
+    fn setup(&self, request: &SetupRequest, members: &[SigningKey]) -> Result<VssSetup, MpcError>;
 
     fn timed_open(
         &self,
-        setup: &ResearchSetup,
+        setup: &VssSetup,
         opening_shares: &[OpeningShare],
         gate: &TimedOpeningGate,
         now_ms: u64,
@@ -217,7 +213,7 @@ pub trait MpcBackend {
 
     fn fast_evaluate(
         &self,
-        setup: &ResearchSetup,
+        setup: &VssSetup,
         private_opening_material: &[OpeningShare],
         raw_share_hash: &Hash256,
         network_target: &Hash256,
@@ -225,11 +221,11 @@ pub trait MpcBackend {
     ) -> Result<FastEvalOutcome, MpcError>;
 }
 
-pub struct ResearchVssBackend<'a> {
+pub struct DeterministicVssBackend<'a> {
     store: &'a dyn DurableStore,
 }
 
-impl<'a> ResearchVssBackend<'a> {
+impl<'a> DeterministicVssBackend<'a> {
     pub fn new(store: &'a dyn DurableStore) -> Self {
         Self { store }
     }
@@ -264,7 +260,7 @@ impl<'a> ResearchVssBackend<'a> {
     /// backups retain the tombstone and cannot regenerate this session.
     pub fn retire_after_audit(
         &self,
-        setup: &ResearchSetup,
+        setup: &VssSetup,
         opened: &OpenedMask,
     ) -> Result<(), MpcError> {
         if blake2b_256(&[&setup.parent_hash, &opened.mask]) != setup.mask_hash {
@@ -314,7 +310,7 @@ impl<'a> ResearchVssBackend<'a> {
 
     pub fn handle_and_retire_early_reveal(
         &self,
-        setup: &ResearchSetup,
+        setup: &VssSetup,
         revealed_mask: Hash256,
         revealing_member: [u8; 32],
         first_observed_ms: u64,
@@ -355,7 +351,7 @@ impl<'a> ResearchVssBackend<'a> {
     /// permanently tombstones the session before returning.
     pub fn handle_and_retire_fast_winner(
         &self,
-        setup: &ResearchSetup,
+        setup: &VssSetup,
         outcome: FastEvalOutcome,
         winning_share_id: Hash256,
         released_at_ms: u64,
@@ -408,7 +404,7 @@ impl<'a> ResearchVssBackend<'a> {
     }
 }
 
-impl MpcBackend for ResearchVssBackend<'_> {
+impl MpcBackend for DeterministicVssBackend<'_> {
     fn security_properties(&self) -> BackendSecurityProperties {
         BackendSecurityProperties {
             malicious_secure: false,
@@ -419,11 +415,7 @@ impl MpcBackend for ResearchVssBackend<'_> {
         }
     }
 
-    fn setup(
-        &self,
-        request: &SetupRequest,
-        members: &[SigningKey],
-    ) -> Result<ResearchSetup, MpcError> {
+    fn setup(&self, request: &SetupRequest, members: &[SigningKey]) -> Result<VssSetup, MpcError> {
         validate_request(request, members)?;
         let reservation_key = logical_session_key(request);
         if let Some(binding) = self
@@ -443,7 +435,7 @@ impl MpcBackend for ResearchVssBackend<'_> {
             .map(|key| key.verifying_key().to_bytes())
             .collect();
 
-        let mut rng = ChaCha20Rng::from_seed(research_rng_seed(request));
+        let mut rng = ChaCha20Rng::from_seed(vss_rng_seed(request));
         let mask = generate_constrained_mask(
             &mut rng,
             request.leading_zero_prefix_q,
@@ -509,7 +501,7 @@ impl MpcBackend for ResearchVssBackend<'_> {
             }
         }
 
-        Ok(ResearchSetup {
+        Ok(VssSetup {
             session_binding,
             parent_hash: request.parent_hash,
             mask_hash,
@@ -526,7 +518,7 @@ impl MpcBackend for ResearchVssBackend<'_> {
 
     fn timed_open(
         &self,
-        setup: &ResearchSetup,
+        setup: &VssSetup,
         opening_shares: &[OpeningShare],
         gate: &TimedOpeningGate,
         now_ms: u64,
@@ -601,7 +593,7 @@ impl MpcBackend for ResearchVssBackend<'_> {
 
     fn fast_evaluate(
         &self,
-        setup: &ResearchSetup,
+        setup: &VssSetup,
         private_opening_material: &[OpeningShare],
         raw_share_hash: &Hash256,
         network_target: &Hash256,
@@ -666,7 +658,7 @@ pub fn evaluate_accepted_winners(
 /// no credit. Eligibility exclusion of `revealing_member` is committed by the
 /// committee fault ledger.
 pub fn handle_early_reveal(
-    setup: &ResearchSetup,
+    setup: &VssSetup,
     revealed_mask: Hash256,
     revealing_member: [u8; 32],
     first_observed_ms: u64,
@@ -723,11 +715,11 @@ fn validate_request(request: &SetupRequest, members: &[SigningKey]) -> Result<()
         return Err(MpcError::InvalidThreshold);
     }
     // The exact `q = 1, d = 0` profile is accepted only by this explicitly
-    // non-production research backend so an unmodified stock-regtest target
+    // non-production test backend so an unmodified stock-regtest target
     // can be exercised. The mask still has its public prefix cleared and is
     // nonzero below it. Production/distributed adapters retain their stricter
     // nonzero-band validation.
-    if !research_mask_parameters_valid(request.leading_zero_prefix_q, request.blind_band_bits_d) {
+    if !mask_parameters_valid(request.leading_zero_prefix_q, request.blind_band_bits_d) {
         return Err(MpcError::InvalidMaskParameters);
     }
     let unique: HashSet<_> = members
@@ -741,7 +733,7 @@ fn validate_request(request: &SetupRequest, members: &[SigningKey]) -> Result<()
 }
 
 fn reconstruct_verified(
-    setup: &ResearchSetup,
+    setup: &VssSetup,
     opening_shares: &[OpeningShare],
 ) -> Result<OpenedMask, MpcError> {
     if merkle_root(&setup.share_commitments) != setup.mask_commitment_root {
@@ -804,7 +796,7 @@ fn reconstruct_verified(
     })
 }
 
-fn fast_eval_transcript(setup: &ResearchSetup, raw_share_hash: &Hash256) -> Hash256 {
+fn fast_eval_transcript(setup: &VssSetup, raw_share_hash: &Hash256) -> Hash256 {
     let mut body = Encoder::new();
     body.fixed(&setup.session_binding);
     body.fixed(raw_share_hash);
@@ -812,7 +804,7 @@ fn fast_eval_transcript(setup: &ResearchSetup, raw_share_hash: &Hash256) -> Hash
 }
 
 fn generate_constrained_mask(rng: &mut impl RngCore, zero_prefix: u16, blind_bits: u16) -> Hash256 {
-    debug_assert!(research_mask_parameters_valid(zero_prefix, blind_bits));
+    debug_assert!(mask_parameters_valid(zero_prefix, blind_bits));
     loop {
         let mut mask = [0; 32];
         rng.fill_bytes(&mut mask);
@@ -831,7 +823,7 @@ fn generate_constrained_mask(rng: &mut impl RngCore, zero_prefix: u16, blind_bit
 }
 
 fn mask_constraints_valid(mask: &Hash256, zero_prefix: u16, blind_bits: u16) -> bool {
-    if !research_mask_parameters_valid(zero_prefix, blind_bits) {
+    if !mask_parameters_valid(zero_prefix, blind_bits) {
         return false;
     }
     let Some(blind_end) = zero_prefix
@@ -848,7 +840,7 @@ fn mask_constraints_valid(mask: &Hash256, zero_prefix: u16, blind_bits: u16) -> 
         }
 }
 
-fn research_mask_parameters_valid(zero_prefix: u16, blind_bits: u16) -> bool {
+fn mask_parameters_valid(zero_prefix: u16, blind_bits: u16) -> bool {
     zero_prefix != 0
         && (blind_bits != 0 || zero_prefix == 1)
         && zero_prefix
@@ -1035,7 +1027,7 @@ fn logical_session_key(request: &SetupRequest) -> String {
     )
 }
 
-fn research_rng_seed(request: &SetupRequest) -> Hash256 {
+fn vss_rng_seed(request: &SetupRequest) -> Hash256 {
     let mut encoder = Encoder::new();
     encoder.u16(request.protocol_version);
     encoder.u8(request.network_id);
@@ -1043,7 +1035,7 @@ fn research_rng_seed(request: &SetupRequest) -> Hash256 {
     encoder.u64(request.session_sequence);
     encoder.fixed(&request.parent_hash);
     encoder.fixed(&request.deterministic_seed);
-    domain_hash(RESEARCH_RNG_DOMAIN, encoder.as_bytes())
+    domain_hash(VSS_RNG_DOMAIN, encoder.as_bytes())
 }
 
 fn encode_opening_share(share: &OpeningShare) -> Vec<u8> {
@@ -1109,7 +1101,7 @@ mod tests {
     #[test]
     fn logical_lane_sequence_cannot_be_rebound_to_a_new_mask() {
         let store = MemoryStore::default();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         backend.setup(&request(), &keys()).unwrap();
         // An exact retry is idempotent and reconstructs the same transcript.
         backend.setup(&request(), &keys()).unwrap();
@@ -1124,7 +1116,7 @@ mod tests {
     #[test]
     fn parallel_lanes_domain_separate_masks_even_if_caller_seed_repeats() {
         let store = MemoryStore::default();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         let first = backend.setup(&request(), &keys()).unwrap();
         let mut other_lane = request();
         other_lane.lane_id = 1;
@@ -1140,14 +1132,14 @@ mod tests {
         let setup;
         {
             let store = RedbStore::create(&path).unwrap();
-            let backend = ResearchVssBackend::new(&store);
+            let backend = DeterministicVssBackend::new(&store);
             assert!(!backend.security_properties().production_eligible);
             setup = backend.setup(&request(), &keys()).unwrap();
         }
 
         // Simulate every participant and the original setup caller restarting.
         let store = RedbStore::create(&path).unwrap();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         let openings: Vec<_> = setup
             .members
             .iter()
@@ -1182,9 +1174,9 @@ mod tests {
     }
 
     #[test]
-    fn stock_regtest_zero_blind_band_is_research_only_and_opens_exactly() {
+    fn stock_regtest_zero_blind_band_is_test_only_and_opens_exactly() {
         let store = MemoryStore::default();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         assert!(!backend.security_properties().production_eligible);
 
         let mut stock_regtest = request();
@@ -1230,13 +1222,13 @@ mod tests {
     }
 
     #[test]
-    fn zero_blind_band_rejects_every_non_stock_research_prefix() {
+    fn zero_blind_band_rejects_every_non_stock_test_prefix() {
         for leading_zero_prefix_q in [2, 8, 255, 256] {
             let mut unsupported = request();
             unsupported.leading_zero_prefix_q = leading_zero_prefix_q;
             unsupported.blind_band_bits_d = 0;
             assert!(matches!(
-                ResearchVssBackend::new(&MemoryStore::default()).setup(&unsupported, &keys()),
+                DeterministicVssBackend::new(&MemoryStore::default()).setup(&unsupported, &keys()),
                 Err(MpcError::InvalidMaskParameters)
             ));
         }
@@ -1249,7 +1241,7 @@ mod tests {
         let setup;
         {
             let store = RedbStore::create(&path).unwrap();
-            let backend = ResearchVssBackend::new(&store);
+            let backend = DeterministicVssBackend::new(&store);
             setup = backend.setup(&request(), &keys()).unwrap();
             let openings = setup
                 .members
@@ -1294,7 +1286,7 @@ mod tests {
         let restored_path = directory.path().join("restored.redb");
         std::fs::copy(&path, &restored_path).unwrap();
         let restored = RedbStore::create(&restored_path).unwrap();
-        let backend = ResearchVssBackend::new(&restored);
+        let backend = DeterministicVssBackend::new(&restored);
         assert!(matches!(
             backend.load_opening(&setup.session_binding, &setup.members[0]),
             Err(MpcError::MissingOpeningMaterial)
@@ -1309,7 +1301,7 @@ mod tests {
     fn accepted_winner_survives_original_miner_exit_and_fast_abort() {
         let directory = secure_tempdir().unwrap();
         let store = RedbStore::create(directory.path().join("winner.redb")).unwrap();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         let setup = backend.setup(&request(), &keys()).unwrap();
         let accepted = vec![AcceptedShareHash {
             share_id: [7; 32],
@@ -1345,7 +1337,7 @@ mod tests {
     #[test]
     fn early_reveal_stops_assignments_and_uses_first_observation_cutoff() {
         let store = MemoryStore::default();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         let setup = backend.setup(&request(), &keys()).unwrap();
         let openings = setup
             .members
@@ -1411,7 +1403,7 @@ mod tests {
     fn tampered_opening_share_fails_before_reconstruction() {
         let directory = secure_tempdir().unwrap();
         let store = RedbStore::create(directory.path().join("tamper.redb")).unwrap();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         let setup = backend.setup(&request(), &keys()).unwrap();
         let mut openings: Vec<_> = setup
             .members
@@ -1439,7 +1431,7 @@ mod tests {
     fn fast_path_reveals_only_false_for_loss_and_mask_for_win() {
         let directory = secure_tempdir().unwrap();
         let store = RedbStore::create(directory.path().join("fast.redb")).unwrap();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         let setup = backend.setup(&request(), &keys()).unwrap();
         let openings: Vec<_> = setup
             .members
@@ -1507,7 +1499,7 @@ mod tests {
     fn forced_fast_abort_falls_back_to_timed_winner_recovery() {
         let directory = secure_tempdir().unwrap();
         let store = RedbStore::create(directory.path().join("abort.redb")).unwrap();
-        let backend = ResearchVssBackend::new(&store);
+        let backend = DeterministicVssBackend::new(&store);
         let setup = backend.setup(&request(), &keys()).unwrap();
         let openings: Vec<_> = setup
             .members

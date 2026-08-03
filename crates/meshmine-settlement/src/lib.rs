@@ -678,10 +678,7 @@ impl SnapshotAccumulator {
     }
 
     fn prune_retained_prefix(&mut self) {
-        loop {
-            let Some(oldest) = self.closed_sessions.front() else {
-                break;
-            };
+        while let Some(oldest) = self.closed_sessions.front() {
             let work_without_oldest = &self.retained_work - sum_credits(&oldest.work);
             if work_without_oldest < self.pplns_window_work {
                 break;

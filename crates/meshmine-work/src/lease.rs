@@ -179,8 +179,11 @@ impl WorkEnvelope {
             || lease.nonce_start > lease.nonce_end
             || self.nonce_stride == 0
             || lease.nonce_stride == 0
-            || lease.nonce_stride % self.nonce_stride != 0
-            || lease.nonce_start.saturating_sub(self.nonce_start) % self.nonce_stride != 0
+            || !lease.nonce_stride.is_multiple_of(self.nonce_stride)
+            || !lease
+                .nonce_start
+                .saturating_sub(self.nonce_start)
+                .is_multiple_of(self.nonce_stride)
             || lease.edge_target.0 > self.edge_target.0
             || lease.edge_target.0 < self.capture_target.0
             || lease.capture_target != self.capture_target

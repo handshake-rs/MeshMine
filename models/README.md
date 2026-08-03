@@ -12,4 +12,4 @@ Run each model with TLC and its adjacent configuration, for example:
 java -cp /path/to/tla2tools.jar tlc2.TLC -config models/mask-session.cfg models/mask_session.tla
 ```
 
-The Rust lifecycle guards in `meshmine-types::state` enforce the same legal transitions at runtime. With TLC 1.8.0, exhaustive breadth-first checking found no invariant violation across 24 reachable mask states, 43 receipt states, and 17 payout states. Model checking is a research validation artifact, not a production security audit.
+The Rust lifecycle guards in `meshmine-types::state` enforce the same legal transitions at runtime. With TLC 1.8.0, exhaustive breadth-first checking found no invariant violation across 24 reachable mask states, 43 receipt states, and 17 payout states. Model checking is an evaluation artifact, not a production security audit.

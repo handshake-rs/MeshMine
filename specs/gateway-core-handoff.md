@@ -15,8 +15,8 @@ distribution and physical ASIC evidence remain release gates.
 
 The gateway path is a distinct Core-v2 extension. It does not relax or reinterpret
 the frozen `AssignmentV2` encoding. A decoder or journal consumer must select
-exactly one of the legacy assignment namespace or the gateway-assignment
-namespace; decoder fallback is forbidden.
+exactly one of the `AssignmentV2` or gateway-assignment namespaces; decoder
+fallback is forbidden.
 
 `GatewayAssignmentV1` is operator-signed and binds the network, session, body,
 body certificate, payout bucket, worker identity, gateway key, Core handoff key,
@@ -28,7 +28,7 @@ operator prefix[4] || miner ExtraNonce2[4] || zero[16]
 ```
 
 The signed inclusive `ExtraNonce2` range is checked as four big-endian bytes.
-Legacy exact assignments still require the exact signed 24-byte extra nonce.
+An exact `AssignmentV2` still requires its signed 24-byte extra nonce.
 
 For the native path, `meshmine-hsrd-bridge` accepts only an immutable prepared
 job bound to the exact committed `hsrd` network and mining generation. It
@@ -126,7 +126,7 @@ This is a local pre-production boundary. The Core daemon now checks the exact
 parent against a mandatory authenticated loopback `hsrd` source. One atomic
 RPC snapshot must report complete native consensus readiness, an authoritative
 durable active tip, no pending better-chain activation, and matching hash,
-height, time, and chainwork. HSD is not invoked by this runtime path. The
+height, time, and chainwork. hns-node-rs is not invoked by this runtime path. The
 operator composes the Core link with the local
 supervisor, fallback hysteresis, dashboard, event journal, reconnect backoff,
 and bounded shutdown drain.

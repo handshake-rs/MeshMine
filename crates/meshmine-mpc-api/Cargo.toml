@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Research VSS and versioned MPC backend boundary for MeshMine"
+description = "Test VSS and versioned MPC backend boundary for MeshMine"
 
 [dependencies]
 ed25519-dalek.workspace = true

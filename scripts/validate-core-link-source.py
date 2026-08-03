@@ -86,7 +86,7 @@ for forbidden in (
 
 operator = (root / 'bins/meshmine-corelink-operatord/src/main.rs').read_text()
 if '.assignment_nonce_prefix(' in operator:
-    raise SystemExit('Core-linked operator uses the research nonce-prefix allocator')
+    raise SystemExit('Core-linked operator uses the test nonce-prefix allocator')
 
 for example in (
     'specs/core-link-core.example.json',

@@ -227,7 +227,7 @@ fn exact_share_validation_checks_hns_header_signatures_and_certificates() {
         claim_airdrop_fees: 0,
         operator_fee_value: 0,
         work_service_subsidy_value: 2_000_000,
-        hsd_validation_result_hash: hash(20),
+        consensus_validation_result_hash: hash(20),
         operator_signature: SignatureBytes::empty(),
     };
     body.operator_signature = sign_object(&operator_key, 2, &body);
@@ -250,7 +250,7 @@ fn exact_share_validation_checks_hns_header_signatures_and_certificates() {
         descriptor_id: descriptor.object_id(),
         parent_hash: parent_certificate.parent_hash,
         parent_height: parent_certificate.parent_height,
-        hsd_validation_result_hash: body.hsd_validation_result_hash,
+        consensus_validation_result_hash: body.consensus_validation_result_hash,
         challenge_round: 1,
         challenge_transcript_root: hash(22),
         signer_set: SignatureSet::empty_ed25519(),

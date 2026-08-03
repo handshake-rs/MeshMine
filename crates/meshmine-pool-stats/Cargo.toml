@@ -1,0 +1,19 @@
+[package]
+name = "meshmine-pool-stats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "HNSA-bound public statistics profile for decentralized MeshMine pools"
+
+[dependencies]
+blake2.workspace = true
+hex.workspace = true
+k256.workspace = true
+meshmine-codec = { path = "../meshmine-codec" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
-expected_node_revision = '504d3fed035feb8a637ca09c4e0816b6e1144622'
+expected_node_revision = '3d346e3dadc716b5c367eee050308e71a0693a64'
 expected_node_source = (
     'git+https://github.com/handshake-rs/hns-node-rs.git'
     f'?rev={expected_node_revision}#{expected_node_revision}'
@@ -59,8 +59,8 @@ node_package_roots = canonical_node_package_roots()
 external_files = {
     '../hns-node-rs/crates/hns-node/src/lib.rs':
         node_package_roots['hns-node'] / 'src/lib.rs',
-    '../hns-node-rs/crates/hns-node/src/shadow_sync.rs':
-        node_package_roots['hns-node'] / 'src/shadow_sync.rs',
+    '../hns-node-rs/crates/hns-node/src/native_sync.rs':
+        node_package_roots['hns-node'] / 'src/native_sync.rs',
     '../hns-node-rs/crates/hns-rpc/src/lib.rs':
         node_package_roots['hns-rpc'] / 'src/lib.rs',
 }
@@ -85,8 +85,8 @@ files = {
         'require_rpc_authorization', 'rpc_authentication_required',
         'rpc_authorization_rejects_missing_and_wrong_values',
     ],
-    '../hns-node-rs/crates/hns-node/src/shadow_sync.rs': [
-        'parent_authority_value', 'getparentauthority',
+    '../hns-node-rs/crates/hns-node/src/native_sync.rs': [
+        'parent_authority_value',
         'best_block_tip_from_snapshot', 'read_canonical_hash',
         'parent_authority_fast_path_is_coherent_and_fail_closed',
     ],
@@ -171,10 +171,10 @@ for listener in ('gateway_listen', 'dashboard_listen'):
     value = operator_config.get(listener, '')
     if not (value.startswith('127.0.0.1:') or value.startswith('[::1]:')):
         raise SystemExit(f'{listener} must be loopback in the example')
-if 'hsd' in parent_config or set(parent_config).intersection(
+if 'HNS node' in parent_config or set(parent_config).intersection(
     {'require_hsrd_match', 'maximum_tip_lag_blocks'}
 ):
-    raise SystemExit('parent-oracle example retains a runtime HSD/shadow field')
+    raise SystemExit('parent-oracle example retains a runtime HNS node/shadow field')
 source = parent_config.get('hsrd', {})
 address = source.get('address', '')
 if not (address.startswith('127.0.0.1:') or address.startswith('[::1]:')):

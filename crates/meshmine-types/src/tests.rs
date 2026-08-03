@@ -79,7 +79,7 @@ fn body() -> BlockBodyPackageV2 {
         claim_airdrop_fees: 22,
         operator_fee_value: 23,
         work_service_subsidy_value: 24,
-        hsd_validation_result_hash: hash(25),
+        consensus_validation_result_hash: hash(25),
         operator_signature: signature(26),
     }
 }
@@ -244,7 +244,7 @@ fn every_core_object_round_trips_canonically() {
         descriptor_id: hash(1),
         parent_hash: hash(2),
         parent_height: 3,
-        hsd_validation_result_hash: hash(4),
+        consensus_validation_result_hash: hash(4),
         challenge_round: 5,
         challenge_transcript_root: hash(6),
         signer_set: signer_set(),

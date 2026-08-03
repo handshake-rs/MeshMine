@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BodyState {
     LocalDraft,
-    HsdValidated,
+    ConsensusValidated,
     ErasurePublished,
     AvailabilityCertified,
     Active,
@@ -62,8 +62,8 @@ impl BodyState {
         if self == next
             || matches!(
                 (self, next),
-                (Self::LocalDraft, Self::HsdValidated)
-                    | (Self::HsdValidated, Self::ErasurePublished)
+                (Self::LocalDraft, Self::ConsensusValidated)
+                    | (Self::ConsensusValidated, Self::ErasurePublished)
                     | (Self::ErasurePublished, Self::AvailabilityCertified)
                     | (Self::AvailabilityCertified, Self::Active)
                     | (Self::Active, Self::Expired)
@@ -174,7 +174,7 @@ mod tests {
     fn all_transitions_are_idempotent_and_skips_are_rejected() {
         for state in [
             BodyState::LocalDraft,
-            BodyState::HsdValidated,
+            BodyState::ConsensusValidated,
             BodyState::ErasurePublished,
             BodyState::AvailabilityCertified,
             BodyState::Active,

@@ -25,7 +25,6 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 const SEQUENCE_NAMESPACE: &str = "gateway-sequence-v2";
-const WORKER_NAMESPACE: &str = "gateway-worker-v2";
 const ASSIGNMENT_NAMESPACE: &str = "gateway-assignment-v2";
 const ASSIGNMENT_STATE_NAMESPACE: &str = "gateway-assignment-state-v2";
 const CURRENT_ASSIGNMENT_NAMESPACE: &str = "gateway-current-assignment-v3";
@@ -38,8 +37,6 @@ const RETIRING_ASSIGNMENT_NAMESPACE: &str = "gateway-retiring-assignment-v3";
 const RETIRED_JOB_NAMESPACE: &str = "gateway-retired-job-v3";
 const CAPTURE_NAMESPACE: &str = "gateway-capture-v2";
 const CAPTURE_TOMBSTONE_NAMESPACE: &str = "gateway-capture-tombstone-v2";
-const CAPTURE_MIGRATION_NAMESPACE: &str = "gateway-capture-migration-v3";
-const LEGACY_TOMBSTONE_CUTOFF_KEY: &str = "legacy-v2-cutoff";
 const NEXT_ASSIGNMENT_KEY: &str = "next-assignment";
 const NEXT_PREFIX_KEY: &str = "next-prefix";
 const CAPTURE_MAGIC: [u8; 4] = *b"MMCF";
@@ -345,8 +342,6 @@ pub struct Gateway {
     capture_indexes: HashMap<Hash256, usize>,
     pending_by_assignment: HashMap<u64, usize>,
     tombstones_by_assignment: HashMap<u64, HashSet<Hash256>>,
-    legacy_tombstones: HashSet<Hash256>,
-    legacy_tombstone_cutoff: Option<u64>,
     retiring_assignments: HashSet<u64>,
     events: VecDeque<GatewayEvent>,
     dropped_events: u64,
@@ -590,9 +585,8 @@ impl Gateway {
 
     /// Open the explicitly non-production simulator profile. HandyStratum's
     /// integer difficulty dialect cannot represent the intentionally easy
-    /// capture targets used by fast local tests, so this mode keeps that
-    /// research harness separate from every real-device gateway.
-    pub fn open_research_simulator(store: Arc<dyn DurableStore>) -> Result<Self, GatewayError> {
+    /// capture targets used by fast local tests.
+    pub fn open_simulator(store: Arc<dyn DurableStore>) -> Result<Self, GatewayError> {
         Self::open_with_target_policy(store, false)
     }
 
@@ -607,7 +601,7 @@ impl Gateway {
         {
             return Err(GatewayError::InvalidDurableState);
         }
-        let legacy_head_migration = format.is_none();
+        let new_store = format.is_none();
         let durable_head = store.get(CURRENT_ASSIGNMENT_NAMESPACE, CURRENT_ASSIGNMENT_KEY)?;
         let durable_head_sequence = durable_head
             .as_deref()
@@ -653,7 +647,6 @@ impl Gateway {
             validate_job(&job, enforce_handy_target)?;
             let state = match recovered_states.remove(&sequence) {
                 Some(state) => state,
-                None if legacy_head_migration => JobState::Active,
                 None => return Err(GatewayError::InvalidDurableState),
             };
             validate_recovered_job_state(&job, state)?;
@@ -675,34 +668,21 @@ impl Gateway {
         let current_job = match (durable_head_sequence, active_jobs.first()) {
             (Some(head), Some((sequence, id))) if head == *sequence => Some(id.clone()),
             (None, None) => None,
-            (None, Some((_, id))) if legacy_head_migration => Some(id.clone()),
             _ => return Err(GatewayError::InvalidDurableState),
         };
-        if legacy_head_migration {
-            let mut operations = vec![BatchOperation::put(
-                CURRENT_ASSIGNMENT_NAMESPACE,
-                CURRENT_ASSIGNMENT_FORMAT_KEY,
-                CURRENT_ASSIGNMENT_FORMAT.to_vec(),
-            )];
-            if let Some((sequence, _)) = active_jobs.first() {
-                operations.push(BatchOperation::put(
-                    ASSIGNMENT_STATE_NAMESPACE,
-                    sequence.to_string(),
-                    encode_durable_job_state(JobState::Active),
-                ));
-                if durable_head_sequence.is_none() {
-                    operations.push(BatchOperation::put(
-                        CURRENT_ASSIGNMENT_NAMESPACE,
-                        CURRENT_ASSIGNMENT_KEY,
-                        sequence.to_le_bytes().to_vec(),
-                    ));
-                }
+        if new_store {
+            if durable_head_sequence.is_some() || !jobs.is_empty() {
+                return Err(GatewayError::InvalidDurableState);
             }
             if !store.apply_batch_if(
                 CURRENT_ASSIGNMENT_NAMESPACE,
                 CURRENT_ASSIGNMENT_FORMAT_KEY,
                 None,
-                &operations,
+                &[BatchOperation::put(
+                    CURRENT_ASSIGNMENT_NAMESPACE,
+                    CURRENT_ASSIGNMENT_FORMAT_KEY,
+                    CURRENT_ASSIGNMENT_FORMAT.to_vec(),
+                )],
             )? {
                 return Err(GatewayError::InvalidDurableState);
             }
@@ -750,50 +730,19 @@ impl Gateway {
         )?;
         let mut seen_work = HashSet::with_capacity(tombstone_records.len());
         let mut tombstones_by_assignment: HashMap<u64, HashSet<Hash256>> = HashMap::new();
-        let mut legacy_tombstones = HashSet::new();
         for record in tombstone_records {
             let work_key = fixed_hash_key(&record.key)?;
             if !seen_work.insert(work_key) {
                 return Err(GatewayError::InvalidDurableState);
             }
-            match decode_capture_tombstone(&record.value)? {
-                CaptureTombstone::LegacyV2 => {
-                    legacy_tombstones.insert(work_key);
-                }
-                CaptureTombstone::Sequenced(sequence) => {
-                    if !assignment_sequences.contains(&sequence) {
-                        return Err(GatewayError::InvalidDurableState);
-                    }
-                    tombstones_by_assignment
-                        .entry(sequence)
-                        .or_default()
-                        .insert(work_key);
-                }
-            }
-        }
-
-        let mut legacy_tombstone_cutoff = store
-            .get(CAPTURE_MIGRATION_NAMESPACE, LEGACY_TOMBSTONE_CUTOFF_KEY)?
-            .as_deref()
-            .map(decode_sequence_value)
-            .transpose()?;
-        if !legacy_tombstones.is_empty() && legacy_tombstone_cutoff.is_none() {
-            let cutoff = assignment_sequences.iter().copied().max().unwrap_or(0);
-            if !store.compare_and_swap(
-                CAPTURE_MIGRATION_NAMESPACE,
-                LEGACY_TOMBSTONE_CUTOFF_KEY,
-                None,
-                &cutoff.to_le_bytes(),
-            )? {
+            let sequence = decode_capture_tombstone(&record.value)?;
+            if !assignment_sequences.contains(&sequence) {
                 return Err(GatewayError::InvalidDurableState);
             }
-            legacy_tombstone_cutoff = Some(cutoff);
-        }
-        if legacy_tombstones.is_empty() && legacy_tombstone_cutoff.is_some() {
-            // A crash after deleting the final legacy tombstone but before
-            // clearing the migration marker is repaired deterministically.
-            store.delete(CAPTURE_MIGRATION_NAMESPACE, LEGACY_TOMBSTONE_CUTOFF_KEY)?;
-            legacy_tombstone_cutoff = None;
+            tombstones_by_assignment
+                .entry(sequence)
+                .or_default()
+                .insert(work_key);
         }
 
         let capture_records = store.scan_namespace(
@@ -849,8 +798,6 @@ impl Gateway {
             capture_indexes,
             pending_by_assignment,
             tombstones_by_assignment,
-            legacy_tombstones,
-            legacy_tombstone_cutoff,
             retiring_assignments,
             events: VecDeque::new(),
             dropped_events: 0,
@@ -884,32 +831,6 @@ impl Gateway {
         {
             return Err(GatewayError::InvalidDurableState);
         }
-        if policy.is_none() {
-            let legacy_key = hex::encode(worker_id_hash);
-            if let Some(prefix) = self.store.get(WORKER_NAMESPACE, &legacy_key)? {
-                let prefix: [u8; 4] = prefix
-                    .try_into()
-                    .map_err(|_| GatewayError::InvalidDurableState)?;
-                if self.store.apply_batch_if(
-                    ASSIGNMENT_PREFIX_NAMESPACE,
-                    &worker_key,
-                    None,
-                    &[BatchOperation::put(
-                        ASSIGNMENT_PREFIX_NAMESPACE,
-                        &worker_key,
-                        prefix.to_vec(),
-                    )],
-                )? {
-                    return Ok(prefix);
-                }
-                return self
-                    .store
-                    .get(ASSIGNMENT_PREFIX_NAMESPACE, &worker_key)?
-                    .ok_or(GatewayError::InvalidDurableState)?
-                    .try_into()
-                    .map_err(|_| GatewayError::InvalidDurableState);
-            }
-        }
         let current = allocate_sequence(self.store.as_ref(), NEXT_PREFIX_KEY)?;
         let prefix = u32::try_from(current).map_err(|_| GatewayError::SequenceExhausted)?;
         let prefix = prefix.to_be_bytes();
@@ -933,8 +854,8 @@ impl Gateway {
     }
 
     /// Install or recover the exact four-byte prefix authorized by a signed
-    /// production gateway assignment. Unlike the research allocator, this
-    /// method never substitutes a locally chosen prefix.
+    /// production gateway assignment. This method never substitutes a
+    /// locally chosen prefix.
     pub fn authorized_assignment_nonce_prefix(
         &self,
         worker_id_hash: &Hash256,
@@ -1334,7 +1255,7 @@ impl Gateway {
             }
             self.advance_retirement(sequence, &id)?;
         }
-        self.purge_legacy_tombstones()
+        Ok(())
     }
 
     fn advance_retirement(&mut self, sequence: u64, id: &str) -> Result<(), GatewayError> {
@@ -1397,42 +1318,6 @@ impl Gateway {
             .ok_or(GatewayError::InvalidDurableState)?;
         self.pending_by_assignment.remove(&sequence);
         self.retiring_assignments.remove(&sequence);
-        Ok(())
-    }
-
-    fn purge_legacy_tombstones(&mut self) -> Result<(), GatewayError> {
-        let Some(cutoff) = self.legacy_tombstone_cutoff else {
-            return Ok(());
-        };
-        if self
-            .jobs
-            .values()
-            .any(|(job, _)| job.assignment_sequence <= cutoff)
-        {
-            return Ok(());
-        }
-        let keys = self
-            .legacy_tombstones
-            .iter()
-            .copied()
-            .take(RETIRE_DELETE_BATCH)
-            .collect::<Vec<_>>();
-        if !keys.is_empty() {
-            let operations = keys
-                .iter()
-                .map(|key| BatchOperation::delete(CAPTURE_TOMBSTONE_NAMESPACE, hex::encode(key)))
-                .collect::<Vec<_>>();
-            self.store.apply_batch(&operations)?;
-            for key in keys {
-                self.legacy_tombstones.remove(&key);
-                self.seen_work.remove(&key);
-            }
-        }
-        if self.legacy_tombstones.is_empty() {
-            self.store
-                .delete(CAPTURE_MIGRATION_NAMESPACE, LEGACY_TOMBSTONE_CUTOFF_KEY)?;
-            self.legacy_tombstone_cutoff = None;
-        }
         Ok(())
     }
 
@@ -1646,7 +1531,7 @@ impl Gateway {
             || lease.nonce_start > lease.nonce_end
             || assignment.nonce_stride == 0
             || lease.nonce_stride == 0
-            || lease.nonce_stride % assignment.nonce_stride != 0
+            || !lease.nonce_stride.is_multiple_of(assignment.nonce_stride)
             || nonce_offset.is_none_or(|offset| {
                 submission.nonce > lease.nonce_end || offset % lease.nonce_stride != 0
             })
@@ -1732,16 +1617,13 @@ impl Gateway {
                 .store
                 .get(CAPTURE_TOMBSTONE_NAMESPACE, &key)?
                 .ok_or(GatewayError::InvalidDurableState)?;
-            match decode_capture_tombstone(&bytes)? {
-                CaptureTombstone::Sequenced(assignment_sequence)
-                    if !self
-                        .jobs
-                        .values()
-                        .any(|(job, _)| job.assignment_sequence == assignment_sequence) =>
-                {
-                    return Err(GatewayError::InvalidDurableState);
-                }
-                _ => {}
+            let assignment_sequence = decode_capture_tombstone(&bytes)?;
+            if !self
+                .jobs
+                .values()
+                .any(|(job, _)| job.assignment_sequence == assignment_sequence)
+            {
+                return Err(GatewayError::InvalidDurableState);
             }
             return Ok(false);
         };
@@ -2280,7 +2162,7 @@ impl FailoverPool {
 }
 
 /// Serve a bounded number of newline-delimited RPC requests. The caller owns
-/// listener lifecycle and authentication scope; legacy Stratum is local-only.
+/// listener lifecycle and authentication scope; ASIC Stratum is local-only.
 pub fn serve_rpc_connection(
     stream: TcpStream,
     session: RpcSession,
@@ -2525,7 +2407,8 @@ fn validate_authorized_job_binding(
         && body_certificate.descriptor_id == descriptor.object_id()
         && body_certificate.parent_hash == session.parent_hash
         && body_certificate.parent_height == template.hns_parent_height
-        && body_certificate.hsd_validation_result_hash == body.hsd_validation_result_hash
+        && body_certificate.consensus_validation_result_hash
+            == body.consensus_validation_result_hash
         && assignment.network_id == session.network_id
         && assignment.network_id == body.network_id
         && assignment.network_id == descriptor.network_id
@@ -2597,7 +2480,7 @@ fn validate_job(job: &GatewayJob, enforce_handy_target: bool) -> Result<(), Gate
         return Err(GatewayError::AdvertisedTargetMismatch);
     }
     // Targets are canonical big-endian integers. A smaller target is harder;
-    // advertising one would make the device omit valid captures. Research
+    // advertising one would make the device omit valid captures. Test
     // simulator mode still enforces this relation even when its intentionally
     // easy target is not representable by HandyStratum's integer difficulty.
     if job.advertised_device_target < job.capture_target {
@@ -2611,8 +2494,8 @@ pub fn handy_target_from_difficulty(difficulty: u32) -> Result<Hash256, GatewayE
         return Err(GatewayError::InvalidDifficulty);
     }
     // Exact pinned HandyStratum util.targetFromDifficulty semantics:
-    // floor(diff1_max / difficulty), compact through hsd, then expand through
-    // hsd before the server compares a submitted proof hash.
+    // floor(diff1_max / difficulty), compact through the HNS consensus
+    // codec, then expand it before the server compares a submitted proof.
     let mut maximum = [0xff; 32];
     maximum[..3].fill(0);
     let target = BigUint::from_bytes_be(&maximum) / difficulty;
@@ -2857,12 +2740,6 @@ fn decode_durable_job_state(bytes: &[u8]) -> Result<JobState, GatewayError> {
     Ok(state)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CaptureTombstone {
-    LegacyV2,
-    Sequenced(u64),
-}
-
 fn encode_capture_tombstone(assignment_sequence: u64) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(14);
     bytes.extend_from_slice(&CAPTURE_TOMBSTONE_MAGIC);
@@ -2871,24 +2748,17 @@ fn encode_capture_tombstone(assignment_sequence: u64) -> Vec<u8> {
     bytes
 }
 
-fn decode_capture_tombstone(bytes: &[u8]) -> Result<CaptureTombstone, GatewayError> {
+fn decode_capture_tombstone(bytes: &[u8]) -> Result<u64, GatewayError> {
     let mut reader = DurableReader::new(bytes);
     if reader.take(4)? != CAPTURE_TOMBSTONE_MAGIC {
         return Err(GatewayError::InvalidDurableState);
     }
     let version = reader.u16()?;
     match (version, bytes.len()) {
-        // The deployed v2 value carried only a magic/version marker.
-        (2, 6) => {
-            reader.finish()?;
-            Ok(CaptureTombstone::LegacyV2)
-        }
-        // Accept the brief in-development v2/14 shape for forward recovery,
-        // but never emit it again.
-        (2 | CAPTURE_TOMBSTONE_VERSION, 14) => {
+        (CAPTURE_TOMBSTONE_VERSION, 14) => {
             let assignment_sequence = reader.u64()?;
             reader.finish()?;
-            Ok(CaptureTombstone::Sequenced(assignment_sequence))
+            Ok(assignment_sequence)
         }
         _ => Err(GatewayError::InvalidDurableState),
     }

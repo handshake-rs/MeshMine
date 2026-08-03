@@ -8,13 +8,13 @@ and MeshMine production mode remains disabled.
 The explicit native mainnet canary can synchronize and report its gates. Core
 accepts work only while `hsrd` reports the synchronized, all-readiness
 `mainnet_canary_active` state and the exact durable tip remains authoritative.
-This introduces no HSD runtime or shadow dependency.
+This introduces no second node implementation or shadow-authority path.
 
 ## Purpose
 
-The private Core/operator transport replaces the research parent-certificate
-allowlist and former runtime HSD dependency with bounded live qualification
-against one authenticated local `hsrd` node. The Core-link operator is composed with the
+The private Core/operator transport replaces static parent-certificate
+allowlisting with bounded live qualification against one authenticated local
+`hsrd` node from the pinned external Rust stack. The Core-link operator is composed with the
 continuous supervisor, fallback behavior, event journal, graceful shutdown, and
 read-only dashboard.
 
@@ -77,8 +77,8 @@ the next request.
 
 There is no fallback or optional witness. RPC loss, malformed or unauthenticated
 responses, incomplete readiness, staged state, and certificate mismatch all
-reject the parent. HSD remains available only as a pinned offline fixture and
-differential-test oracle; neither Core nor the operator invokes it at runtime.
+reject the parent. Core and the operator do not invoke a second node or compare
+two authorities at runtime.
 
 ### RPC boundary
 
@@ -219,7 +219,7 @@ separately.
 ## Deliberate limitations
 
 - Both daemons reject `production: true`.
-- HSD has no runtime role in this path.
+- The pinned external Rust node is the sole runtime Handshake authority.
 - Mainnet additionally requires hsrd's explicit canary flag, exact
   header/active-state synchronization, every individual readiness bit, and the
   stricter mainnet freshness/cache policy.

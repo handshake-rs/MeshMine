@@ -137,7 +137,7 @@ pub fn persist_encoded_body(
     journal: &ProtocolJournal<'_>,
     body_package_id: Hash256,
     canonical_body_bytes: &[u8],
-    hsd_validation_result_hash: Hash256,
+    consensus_validation_result_hash: Hash256,
     encoded: &EncodedBody,
 ) -> Result<(), BodyPersistenceError> {
     if encoded.descriptor.body_package_id != body_package_id
@@ -154,7 +154,7 @@ pub fn persist_encoded_body(
     journal.persist(
         ProtocolRecordKind::BodyValidation,
         &body_package_id,
-        &hsd_validation_result_hash,
+        &consensus_validation_result_hash,
     )?;
     let descriptor_id = encoded.descriptor.object_id();
     let mut descriptor_bytes = Encoder::new();

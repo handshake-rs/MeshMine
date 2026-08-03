@@ -10,10 +10,13 @@ description = "Continuous authenticated Core-link to HandyStratum operator bridg
 [dependencies]
 ed25519-dalek.workspace = true
 hex.workspace = true
+ipnet.workspace = true
+k256.workspace = true
 libc.workspace = true
 meshmine-core-link = { path = "../../crates/meshmine-core-link" }
 meshmine-gateway = { path = "../../crates/meshmine-gateway" }
 meshmine-hns = { path = "../../crates/meshmine-hns" }
+meshmine-pool-stats = { path = "../../crates/meshmine-pool-stats" }
 meshmine-service = { path = "../../crates/meshmine-service" }
 meshmine-storage = { path = "../../crates/meshmine-storage" }
 meshmine-types = { path = "../../crates/meshmine-types" }

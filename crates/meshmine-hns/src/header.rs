@@ -36,7 +36,7 @@ pub struct HnsHeader {
 /// The 256-byte representation sent to an HNS miner.
 ///
 /// It carries `mask_hash`, not the secret mask, exactly like
-/// `AbstractBlock.toMiner()` in `hsd`.
+/// `AbstractBlock.toMiner()` in `HNS node`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MinerHeader {
     pub nonce: u32,
@@ -522,8 +522,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_live_hsd_getwork_vector() {
-        // Captured read-only from the running hsd 8.99.0 node at upstream
+    fn parses_live_hns_getwork_vector() {
+        // Captured read-only from the running HNS node 8.99.0 node at upstream
         // commit 698e252e. The secret mask is intentionally unavailable.
         let data = hex::decode(concat!(
             "00000000b03d5a6a00000000d22bfc353fd1bef18c3ea20978d8f7cce44f67d9",

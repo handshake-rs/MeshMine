@@ -4,7 +4,7 @@ use std::io::{self, BufWriter, Write};
 use ed25519_dalek::SigningKey;
 use meshmine_hns::blake2b_256;
 use meshmine_mpc_api::{
-    MpcBackend, ResearchVssBackend, SessionPhase, SetupRequest, TimedOpeningGate,
+    DeterministicVssBackend, MpcBackend, SessionPhase, SetupRequest, TimedOpeningGate,
 };
 use meshmine_storage::MemoryStore;
 
@@ -22,7 +22,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         .transpose()?
         .unwrap_or(10_000);
     let store = MemoryStore::default();
-    let backend = ResearchVssBackend::new(&store);
+    let backend = DeterministicVssBackend::new(&store);
     let members = vec![
         SigningKey::from_bytes(&[1; 32]),
         SigningKey::from_bytes(&[2; 32]),

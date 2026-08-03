@@ -6,7 +6,7 @@ use meshmine_codec::Encoder;
 use meshmine_crypto::{assemble_ed25519_set, sign_certificate};
 use meshmine_hns::{Hash256, merkle_root};
 use meshmine_mpc_api::{
-    AcceptedShareHash, MpcBackend, MpcError, ResearchVssBackend, SessionPhase, SetupRequest,
+    AcceptedShareHash, DeterministicVssBackend, MpcBackend, MpcError, SessionPhase, SetupRequest,
     TimedOpeningGate, evaluate_accepted_winners,
 };
 use meshmine_network::{SimulatedNetwork, simulation_object_id};
@@ -49,7 +49,7 @@ pub struct OverlaySummary {
     pub unrecoverable_winners_under_assumption: u64,
     pub injected_incidents: u64,
     pub final_event_hash: String,
-    pub research_backend_production_eligible: bool,
+    pub backend_production_eligible: bool,
     pub public_deployment_verified: bool,
 }
 
@@ -94,7 +94,7 @@ pub fn run_overlay_testnet(
     run_committee_liveness_drill(&mut transcript)?;
 
     let store = MemoryStore::default();
-    let backend = ResearchVssBackend::new(&store);
+    let backend = DeterministicVssBackend::new(&store);
     let keys: Vec<_> = (1..=config.committee_members)
         .map(|index| {
             let mut seed = config.seed;
@@ -188,7 +188,7 @@ pub fn run_overlay_testnet(
         protocol_version: 2,
         network_id: 2,
         implementation: "meshmine-rust-local-overlay-harness/v2".to_owned(),
-        verifier_contract: "hsd-oracle/verify-overlay-transcript.js".to_owned(),
+        verifier_contract: "HNS node-oracle/verify-overlay-transcript.js".to_owned(),
         seed: hex::encode(config.seed),
         session_count: config.session_count,
         committee_members: config.committee_members,
@@ -200,7 +200,7 @@ pub fn run_overlay_testnet(
             unrecoverable_winners_under_assumption: config.session_count - recovered,
             injected_incidents: 6,
             final_event_hash: final_hash,
-            research_backend_production_eligible: backend.security_properties().production_eligible,
+            backend_production_eligible: backend.security_properties().production_eligible,
             public_deployment_verified: false,
         },
     })
@@ -223,7 +223,7 @@ pub fn render_overlay_explorer(transcript: &OverlayTranscript) -> String {
         ));
     }
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>MeshMine local overlay explorer</title><style>body{{font:16px system-ui;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#15202b}}.warning{{padding:1rem;background:#fff2cc;border:1px solid #d6a900}}table{{border-collapse:collapse;width:100%}}th,td{{padding:.55rem;border-bottom:1px solid #ddd;text-align:left}}code{{font-size:.85em}}</style></head><body><h1>MeshMine overlay incident explorer</h1><p class=\"warning\"><strong>Research harness only.</strong> This is reproducible local evidence, not a public deployment or production MPC claim.</p><dl><dt>Sessions</dt><dd>{}</dd><dt>Accepted/recovered</dt><dd>{}/{}</dd><dt>Unrecoverable under threshold assumption</dt><dd>{}</dd><dt>Final transcript hash</dt><dd><code>{}</code></dd></dl><h2>Injected incidents</h2><table><thead><tr><th>Seq</th><th>Incident</th><th>Outcome</th><th>Event hash</th></tr></thead><tbody>{}</tbody></table></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>MeshMine local overlay explorer</title><style>body{{font:16px system-ui;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#15202b}}.warning{{padding:1rem;background:#fff2cc;border:1px solid #d6a900}}table{{border-collapse:collapse;width:100%}}th,td{{padding:.55rem;border-bottom:1px solid #ddd;text-align:left}}code{{font-size:.85em}}</style></head><body><h1>MeshMine overlay incident explorer</h1><p class=\"warning\"><strong>Test harness only.</strong> This is reproducible local evidence, not a public deployment or production MPC claim.</p><dl><dt>Sessions</dt><dd>{}</dd><dt>Accepted/recovered</dt><dd>{}/{}</dd><dt>Unrecoverable under threshold assumption</dt><dd>{}</dd><dt>Final transcript hash</dt><dd><code>{}</code></dd></dl><h2>Injected incidents</h2><table><thead><tr><th>Seq</th><th>Incident</th><th>Outcome</th><th>Event hash</th></tr></thead><tbody>{}</tbody></table></body></html>",
         transcript.session_count,
         transcript.summary.accepted_winners,
         transcript.summary.recovered_winners,
@@ -550,8 +550,8 @@ mod tests {
         assert_eq!(first.summary.accepted_winners, 100);
         assert_eq!(first.summary.recovered_winners, 100);
         assert_eq!(first.summary.unrecoverable_winners_under_assumption, 0);
-        assert!(!first.summary.research_backend_production_eligible);
+        assert!(!first.summary.backend_production_eligible);
         assert!(!first.summary.public_deployment_verified);
-        assert!(render_overlay_explorer(&first).contains("Research harness only"));
+        assert!(render_overlay_explorer(&first).contains("Test harness only"));
     }
 }

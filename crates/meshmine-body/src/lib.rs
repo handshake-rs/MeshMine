@@ -11,7 +11,7 @@ use thiserror::Error;
 
 pub const COINBASE_COMMITMENT_MAGIC: [u8; 4] = *b"HNSM";
 pub const COINBASE_COMMITMENT_SIZE: usize = 147;
-const VALIDATION_DOMAIN: &str = "meshmine/hsd-validation-result/v2";
+const VALIDATION_DOMAIN: &str = "meshmine/consensus-validation-result/v3";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CoinbaseCommitmentV2 {
@@ -147,7 +147,7 @@ impl CoinbaseOutputSkeleton {
         Ok(outputs)
     }
 
-    /// Size the ordinary NONE-covenant payout outputs exactly as hsd does:
+    /// Size the ordinary NONE-covenant payout outputs exactly as HNS node does:
     /// value(8) + address version(1) + address length(1) + address bytes +
     /// covenant type(1) + covenant item count varint(1).
     pub fn payout_weight_reservation(&self) -> Result<PayoutWeightReservation, BodyError> {
@@ -231,7 +231,7 @@ pub fn build_body_package(
     operator_signature: SignatureBytes,
 ) -> Result<BlockBodyPackageV2, BodyError> {
     let template_core_id = template_core.object_id();
-    let hsd_validation_result_hash = validation_result_hash(
+    let consensus_validation_result_hash = validation_result_hash(
         template_core.network_id,
         &template_core_id,
         &coinbase_raw,
@@ -256,7 +256,7 @@ pub fn build_body_package(
         claim_airdrop_fees,
         operator_fee_value,
         work_service_subsidy_value,
-        hsd_validation_result_hash,
+        consensus_validation_result_hash,
         operator_signature,
     };
     validate_body_package(&package)?;
@@ -420,7 +420,7 @@ mod tests {
             .collect();
         assert_eq!(values, [1, 9, 2, 3, 4, 5, 6]);
 
-        // Five ordinary P2WPKH payouts are 32 bytes each under exact hsd
+        // Five ordinary P2WPKH payouts are 32 bytes each under exact HNS node
         // serialization, plus the one-byte final output-count prefix. The
         // mandatory claim payload is accounted by the body builder itself.
         let reservation = skeleton.payout_weight_reservation().unwrap();
@@ -431,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn payout_reservation_tracks_hsd_varint_boundary_and_address_rules() {
+    fn payout_reservation_tracks_hns_varint_boundary_and_address_rules() {
         let output = PayoutOutput {
             hns_address_version: 0,
             hns_address_hash: vec![1; 20],

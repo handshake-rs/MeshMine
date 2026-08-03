@@ -1,4 +1,4 @@
-# MeshMine Core v2 research wire profile
+# MeshMine Core v2 evaluation wire profile
 
 Status: frozen for the Stage 0 reference implementation and cross-language vectors. This profile is not a mainnet security claim.
 

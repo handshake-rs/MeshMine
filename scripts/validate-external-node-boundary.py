@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that MeshMine consumes only the standalone Rust node at runtime.
-
-The historical ``hsrd`` source tree remains excluded from this Cargo
-workspace.  It may retain qualification fixtures, but no MeshMine package may
-resolve an HNS runtime dependency from that tree.
-"""
+"""Verify that MeshMine consumes only the standalone Rust node at runtime."""
 
 from __future__ import annotations
 
@@ -17,7 +12,7 @@ from typing import NoReturn
 ROOT = Path(__file__).resolve().parents[1]
 EMBEDDED_NODE = (ROOT / "hsrd").resolve()
 BRIDGE = (ROOT / "crates" / "meshmine-hsrd-bridge" / "Cargo.toml").resolve()
-EXPECTED_NODE_REVISION = "504d3fed035feb8a637ca09c4e0816b6e1144622"
+EXPECTED_NODE_REVISION = "3d346e3dadc716b5c367eee050308e71a0693a64"
 EXPECTED_NODE_DEPENDENCY_SOURCE = (
     "git+https://github.com/handshake-rs/hns-node-rs.git"
     f"?rev={EXPECTED_NODE_REVISION}"

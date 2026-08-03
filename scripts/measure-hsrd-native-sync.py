@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure one uninterrupted hsrd native-sync runtime without an HSD process."""
+"""Measure one uninterrupted hsrd native-sync runtime without an HNS node process."""
 
 from __future__ import annotations
 

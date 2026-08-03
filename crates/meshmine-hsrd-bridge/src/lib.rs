@@ -888,7 +888,7 @@ mod tests {
             claim_airdrop_fees: 0,
             operator_fee_value: 0,
             work_service_subsidy_value: 50,
-            hsd_validation_result_hash: [15; 32],
+            consensus_validation_result_hash: [15; 32],
             operator_signature: SignatureBytes::empty(),
         };
         body.operator_signature = sign_object(&operator, network_id, &body);
@@ -910,7 +910,7 @@ mod tests {
             descriptor_id: descriptor.object_id(),
             parent_hash,
             parent_height: snapshot.tip.height,
-            hsd_validation_result_hash: body.hsd_validation_result_hash,
+            consensus_validation_result_hash: body.consensus_validation_result_hash,
             challenge_round: 1,
             challenge_transcript_root: [21; 32],
             signer_set: SignatureSet::empty_ed25519(),
@@ -1081,7 +1081,7 @@ mod tests {
     fn exact_native_job_is_durably_bound_and_activated_idempotently() {
         let fixture = gateway_fixture();
         let store = Arc::new(MemoryStore::default());
-        let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
+        let mut gateway = Gateway::open_simulator(store.clone()).unwrap();
         let (_hub, mut stream) = authoritative_stream(&fixture.snapshot);
 
         let bound = activate(&fixture, &mut stream, &mut gateway).unwrap();
@@ -1104,7 +1104,7 @@ mod tests {
     fn authoritative_tip_reconciliation_retires_stale_asic_work() {
         let fixture = gateway_fixture();
         let store = Arc::new(MemoryStore::default());
-        let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
+        let mut gateway = Gateway::open_simulator(store.clone()).unwrap();
         let (hub, mut stream) = authoritative_stream(&fixture.snapshot);
         let bound = activate(&fixture, &mut stream, &mut gateway).unwrap();
 

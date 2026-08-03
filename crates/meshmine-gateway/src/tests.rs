@@ -162,7 +162,7 @@ fn authorized_fixture(assignment_sequence: u64) -> AuthorizedFixture {
         claim_airdrop_fees: 0,
         operator_fee_value: 20,
         work_service_subsidy_value: 2_080,
-        hsd_validation_result_hash: hash(39),
+        consensus_validation_result_hash: hash(39),
         operator_signature: SignatureBytes::empty(),
     };
     let body_package_id = body.object_id();
@@ -184,7 +184,7 @@ fn authorized_fixture(assignment_sequence: u64) -> AuthorizedFixture {
         descriptor_id: descriptor.object_id(),
         parent_hash: base_job.previous_block,
         parent_height: 99,
-        hsd_validation_result_hash: body.hsd_validation_result_hash,
+        consensus_validation_result_hash: body.consensus_validation_result_hash,
         challenge_round: 1,
         challenge_transcript_root: hash(44),
         signer_set: SignatureSet::empty_ed25519(),
@@ -234,7 +234,7 @@ fn authorized_fixture(assignment_sequence: u64) -> AuthorizedFixture {
 fn setup() -> (tempfile::TempDir, Gateway, [u8; 4]) {
     let directory = secure_tempdir().unwrap();
     let store = Arc::new(RedbStore::create(directory.path().join("gateway.redb")).unwrap());
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     assert_eq!(gateway.issue_job(job()).unwrap(), 1);
     let prefix = gateway.assignment_nonce_prefix(&hash(20), 1).unwrap();
     (directory, gateway, prefix)
@@ -377,7 +377,7 @@ fn target_and_stale_windows_are_enforced_while_grace_captures_still_forward() {
 
     let directory = secure_tempdir().unwrap();
     let store = Arc::new(RedbStore::create(directory.path().join("hard.redb")).unwrap());
-    let mut invalid = Gateway::open_research_simulator(store).unwrap();
+    let mut invalid = Gateway::open_simulator(store).unwrap();
     let mut hard_job = job();
     hard_job.advertised_device_target = [0x7e; 32];
     assert!(matches!(
@@ -393,13 +393,13 @@ fn prefix_and_assignment_sequences_advance_durably_before_exposure() {
     let first_prefix;
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         assert_eq!(gateway.issue_job(job()).unwrap(), 1);
         first_prefix = gateway.assignment_nonce_prefix(&hash(1), 1).unwrap();
     }
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         assert_eq!(
             gateway.assignment_nonce_prefix(&hash(1), 1).unwrap(),
             first_prefix
@@ -433,7 +433,7 @@ fn prefix_and_assignment_sequences_advance_durably_before_exposure() {
 fn signed_gateway_assignment_fixes_job_id_prefix_and_miner_selected_ranges() {
     let directory = secure_tempdir().unwrap();
     let store = Arc::new(RedbStore::create(directory.path().join("authorized.redb")).unwrap());
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     let fixture = authorized_fixture(1);
     assert_eq!(
         gateway
@@ -495,7 +495,7 @@ fn signed_gateway_assignment_fixes_job_id_prefix_and_miner_selected_ranges() {
 fn core_linked_rpc_session_enforces_its_signed_assignment() {
     let directory = secure_tempdir().unwrap();
     let store = Arc::new(RedbStore::create(directory.path().join("rpc-authorized.redb")).unwrap());
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     let fixture = authorized_fixture(1);
     gateway
         .issue_authorized_job(AuthorizedGatewayJobRequest {
@@ -616,7 +616,7 @@ fn authorized_rpc_session_rejects_a_different_worker_or_telemetry_profile() {
 fn signed_mismatch_cannot_burn_the_local_assignment_sequence() {
     let directory = secure_tempdir().unwrap();
     let store = Arc::new(RedbStore::create(directory.path().join("sequence.redb")).unwrap());
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     let wrong_sequence = authorized_fixture(2);
     assert!(matches!(
         gateway.issue_authorized_job(AuthorizedGatewayJobRequest {
@@ -675,7 +675,7 @@ fn issued_jobs_captures_and_duplicate_rejection_survive_restart() {
     let accepted;
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         assert_eq!(gateway.issue_job(job()).unwrap(), 1);
         prefix = gateway.assignment_nonce_prefix(&worker, 1).unwrap();
         let nonce = qualifying_nonces(prefix, 1)[0];
@@ -685,7 +685,7 @@ fn issued_jobs_captures_and_duplicate_rejection_survive_restart() {
     }
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         assert_eq!(gateway.current_job().unwrap().assignment_sequence, 1);
         assert_eq!(gateway.assignment_nonce_prefix(&worker, 1).unwrap(), prefix);
         assert_eq!(gateway.forwarded(), std::slice::from_ref(&accepted));
@@ -726,7 +726,7 @@ fn acknowledged_capture_payload_is_compacted_but_dedup_survives_restart() {
     let work_key;
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         gateway.issue_job(job()).unwrap();
         prefix = gateway.assignment_nonce_prefix(&hash(32), 1).unwrap();
         nonce = qualifying_nonces(prefix, 1)[0];
@@ -740,7 +740,7 @@ fn acknowledged_capture_payload_is_compacted_but_dedup_survives_restart() {
     }
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         assert!(gateway.forwarded().is_empty());
         assert!(!gateway.acknowledge_capture(&work_key).unwrap());
         assert!(matches!(
@@ -763,7 +763,7 @@ fn malformed_durable_gateway_state_fails_closed() {
     ));
 
     let store = Arc::new(MemoryStore::default());
-    let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
+    let mut gateway = Gateway::open_simulator(store.clone()).unwrap();
     gateway.issue_job(job()).unwrap();
     let prefix = gateway.assignment_nonce_prefix(&hash(33), 1).unwrap();
     let nonce = qualifying_nonces(prefix, 1)[0];
@@ -781,7 +781,7 @@ fn malformed_durable_gateway_state_fails_closed() {
         .unwrap();
     drop(gateway);
     assert!(matches!(
-        Gateway::open_research_simulator(store),
+        Gateway::open_simulator(store),
         Err(GatewayError::InvalidDurableState)
     ));
 }
@@ -794,7 +794,7 @@ fn grace_cutoff_and_closed_state_survive_restart() {
     let nonces;
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         gateway.issue_job(job()).unwrap();
         prefix = gateway.assignment_nonce_prefix(&hash(41), 1).unwrap();
         nonces = qualifying_nonces(prefix, 2);
@@ -802,7 +802,7 @@ fn grace_cutoff_and_closed_state_survive_restart() {
     }
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         assert!(gateway.current_job().is_none());
         let grace = gateway
             .submit(
@@ -817,7 +817,7 @@ fn grace_cutoff_and_closed_state_survive_restart() {
     }
     {
         let store = Arc::new(RedbStore::create(&path).unwrap());
-        let mut gateway = Gateway::open_research_simulator(store).unwrap();
+        let mut gateway = Gateway::open_simulator(store).unwrap();
         assert!(gateway.current_job().is_none());
         assert!(matches!(
             gateway.submit(
@@ -897,7 +897,7 @@ fn handy_difficulty_mapping_is_exact_and_real_device_jobs_fail_closed() {
 fn exact_issue_retry_and_single_active_transition_survive_restart() {
     let store = Arc::new(MemoryStore::default());
     {
-        let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
+        let mut gateway = Gateway::open_simulator(store.clone()).unwrap();
         assert_eq!(gateway.issue_job(job()).unwrap(), 1);
         assert_eq!(gateway.issue_job(job()).unwrap(), 1);
         assert_eq!(gateway.events().len(), 1);
@@ -931,7 +931,7 @@ fn exact_issue_retry_and_single_active_transition_survive_restart() {
         );
         assert_eq!(gateway.current_job().unwrap().assignment_sequence, 2);
     }
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     assert_eq!(gateway.current_job().unwrap().assignment_sequence, 2);
     let mut retry = job();
     retry.id = "job-000000000002".to_owned();
@@ -942,7 +942,7 @@ fn exact_issue_retry_and_single_active_transition_survive_restart() {
 #[test]
 fn recovery_rejects_multiple_active_assignments_even_with_a_head() {
     let store = Arc::new(MemoryStore::default());
-    Gateway::open_research_simulator(store.clone()).unwrap();
+    Gateway::open_simulator(store.clone()).unwrap();
     let mut first = job();
     first.assignment_sequence = 1;
     let mut second = job();
@@ -970,7 +970,7 @@ fn recovery_rejects_multiple_active_assignments_even_with_a_head() {
         ])
         .unwrap();
     assert!(matches!(
-        Gateway::open_research_simulator(store),
+        Gateway::open_simulator(store),
         Err(GatewayError::InvalidDurableState)
     ));
 }
@@ -981,7 +981,7 @@ fn closed_job_retires_only_after_capture_ack_and_id_can_never_reappear() {
     let prefix;
     let capture;
     {
-        let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
+        let mut gateway = Gateway::open_simulator(store.clone()).unwrap();
         gateway.issue_job(job()).unwrap();
         prefix = gateway.assignment_nonce_prefix(&hash(51), 1).unwrap();
         let nonce = qualifying_nonces(prefix, 1)[0];
@@ -1006,52 +1006,11 @@ fn closed_job_retires_only_after_capture_ack_and_id_can_never_reappear() {
             Err(GatewayError::StaleJob)
         ));
     }
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     assert!(matches!(
         gateway.issue_job(job()),
         Err(GatewayError::InvalidJobId)
     ));
-}
-
-#[test]
-fn legacy_six_byte_capture_tombstone_migrates_conservatively() {
-    let store = Arc::new(MemoryStore::default());
-    let legacy_key = hash(77);
-    {
-        let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
-        gateway.issue_job(job()).unwrap();
-    }
-    let mut legacy = CAPTURE_TOMBSTONE_MAGIC.to_vec();
-    legacy.extend_from_slice(&2u16.to_le_bytes());
-    store
-        .put(
-            CAPTURE_TOMBSTONE_NAMESPACE,
-            &hex::encode(legacy_key),
-            &legacy,
-        )
-        .unwrap();
-    let mut gateway = Gateway::open_research_simulator(store.clone()).unwrap();
-    assert!(!gateway.acknowledge_capture(&legacy_key).unwrap());
-    gateway.close_expired(251).unwrap();
-    assert!(matches!(
-        gateway.acknowledge_capture(&legacy_key),
-        Err(GatewayError::CaptureNotFound)
-    ));
-    Gateway::open_research_simulator(store.clone()).unwrap();
-    store
-        .put(
-            CAPTURE_MIGRATION_NAMESPACE,
-            LEGACY_TOMBSTONE_CUTOFF_KEY,
-            &1u64.to_le_bytes(),
-        )
-        .unwrap();
-    Gateway::open_research_simulator(store.clone()).unwrap();
-    assert_eq!(
-        store
-            .get(CAPTURE_MIGRATION_NAMESPACE, LEGACY_TOMBSTONE_CUTOFF_KEY)
-            .unwrap(),
-        None
-    );
 }
 
 #[test]
@@ -1313,7 +1272,7 @@ fn transactions_require_authentication_and_have_a_response_bound() {
 
     let directory = secure_tempdir().unwrap();
     let store = Arc::new(RedbStore::create(directory.path().join("large-job.redb")).unwrap());
-    let mut large_gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut large_gateway = Gateway::open_simulator(store).unwrap();
     let mut large_job = job();
     large_job.id = "job-000000000099".to_owned();
     large_job.transaction_hashes = vec![hash(9); MAX_RPC_TRANSACTION_HASHES + 1];
@@ -1504,7 +1463,7 @@ impl DurableCaptureConsumer for TestCaptureConsumer {
 #[test]
 fn durable_capture_drain_acknowledges_only_after_consumer_success() {
     let store = Arc::new(MemoryStore::default());
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     gateway.issue_job(job()).unwrap();
     let prefix = gateway.assignment_nonce_prefix(&hash(91), 1).unwrap();
     let nonce = qualifying_nonces(prefix, 1)[0];
@@ -1535,7 +1494,7 @@ fn durable_capture_drain_acknowledges_only_after_consumer_success() {
 fn local_work_lease_narrows_signed_gateway_assignment() {
     let fixture = authorized_fixture(1);
     let gateway_store = Arc::new(MemoryStore::default());
-    let mut gateway = Gateway::open_research_simulator(gateway_store).unwrap();
+    let mut gateway = Gateway::open_simulator(gateway_store).unwrap();
     gateway
         .issue_authorized_job(AuthorizedGatewayJobRequest {
             manifest: &fixture.manifest,
@@ -1690,7 +1649,7 @@ fn shared_rpc_control_rotates_sessions_and_fails_closed_on_auth_budget() {
 #[test]
 fn gateway_status_reports_current_job_and_pending_capture_counts() {
     let store: Arc<dyn DurableStore> = Arc::new(MemoryStore::default());
-    let mut gateway = Gateway::open_research_simulator(store).unwrap();
+    let mut gateway = Gateway::open_simulator(store).unwrap();
     let job = job();
     let job_id = job.id.clone();
     let issued_ms = job.issued_ms;

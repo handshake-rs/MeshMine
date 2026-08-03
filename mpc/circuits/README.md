@@ -27,5 +27,5 @@ deterministic parent/mask pairs with `meshmine-hns`'s HNS BLAKE2b oracle. This
 proves the clear semantics and deterministic circuit shape; it does not prove
 the security of an MPC runtime by itself. The separate distributed adapter in
 [`../mp-spdz/README.md`](../mp-spdz/README.md) binds this circuit to an executed
-research setup and durable per-member shares; neither that composition nor the
+evaluation setup and durable per-member shares; neither that composition nor the
 trusted-coordinator simulation backend is production-eligible.

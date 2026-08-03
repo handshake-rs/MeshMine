@@ -8,7 +8,7 @@ use std::{env, path::PathBuf};
 
 use ed25519_dalek::SigningKey;
 use meshmine_mpc_api::{
-    MpcBackend, ResearchVssBackend, SessionPhase, SetupRequest, TimedOpeningGate,
+    DeterministicVssBackend, MpcBackend, SessionPhase, SetupRequest, TimedOpeningGate,
     distributed::{
         ArtifactAllowlist, MpSpdzArtifactPaths, MpSpdzLocalOutput, assemble_distributed_setup,
         import_local_setup_output, load_local_opening, reviewed_three_party_fixture_manifest,
@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .zip(&members)
         .map(|(store, member)| load_local_opening(store, &assembled.setup.session_binding, member))
         .collect::<Result<_, _>>()?;
-    let backend = ResearchVssBackend::new(&stores[0]);
+    let backend = DeterministicVssBackend::new(&stores[0]);
     let opened = backend.timed_open(
         &assembled.setup,
         &openings,

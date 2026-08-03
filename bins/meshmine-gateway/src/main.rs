@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
 use std::io::Read;
-use std::net::{SocketAddr, TcpListener};
+use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
+use ipnet::IpNet;
 use meshmine_gateway::{
     DeviceProfile, Gateway, GatewayJob, HardwareEvidence, PreviousJobTransition, RpcServeError,
     RpcSession, serve_rpc_connection,
@@ -72,11 +73,12 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
     if arguments.first().map(String::as_str) != Some("serve") {
-        return Err("usage: meshmine-gateway serve --listen 127.0.0.1:PORT --state FILE --job FILE --username USER --password-file FILE --profile simulator|handyminer|hs3|goldshell [--production] [--max-connections N] [--max-requests N]".into());
+        return Err("usage: meshmine-gateway serve --listen ADDRESS:PORT --state FILE --job FILE --username USER --password-file FILE --profile simulator|handyminer|hs3|goldshell [--allow-cidrs PRIVATE_CIDR,...] [--production] [--max-connections N] [--max-requests N]".into());
     }
     validate_arguments(&arguments)?;
     let address: SocketAddr = argument(&arguments, "--listen")?.parse()?;
-    validate_loopback(address)?;
+    let allowed_networks = parse_allowed_cidrs(optional_argument(&arguments, "--allow-cidrs"))?;
+    validate_listener(address, &allowed_networks)?;
     let state = Path::new(argument(&arguments, "--state")?);
     let job_path = Path::new(argument(&arguments, "--job")?);
     let username = argument(&arguments, "--username")?;
@@ -91,7 +93,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let password_path = Path::new(argument(&arguments, "--password-file")?);
     validate_runtime_path(password_path, "password")?;
     let password = read_password_file(password_path)?;
-    // Research target policy must be an explicit operator choice. Falling
+    // Simulator target policy must be an explicit operator choice. Falling
     // back to the simulator would silently weaken exact HandyStratum target
     // enforcement after a misspelled or omitted profile argument.
     let profile = profile(argument(&arguments, "--profile")?)?;
@@ -141,7 +143,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(address)?;
     let store = Arc::new(RedbStore::create(state)?);
     let mut gateway = if profile.hardware_evidence() == HardwareEvidence::SimulatorOnly {
-        Gateway::open_research_simulator(store)?
+        Gateway::open_simulator(store)?
     } else {
         Gateway::open(store)?
     };
@@ -165,7 +167,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut authorization_failures = 0u16;
     for _ in 0..max_connections {
         let (stream, peer) = listener.accept()?;
-        if !peer.ip().is_loopback() {
+        if !peer_allowed(peer.ip(), &allowed_networks) {
             continue;
         }
         let session = RpcSession::new(username, &password, nonce_prefix, profile.clone());
@@ -266,11 +268,58 @@ fn profile(name: &str) -> Result<DeviceProfile, Box<dyn Error>> {
     })
 }
 
-fn validate_loopback(address: SocketAddr) -> Result<(), Box<dyn Error>> {
-    if !address.ip().is_loopback() {
-        return Err("legacy Stratum listener must use an explicit loopback address".into());
+fn validate_listener(
+    address: SocketAddr,
+    allowed_networks: &[IpNet],
+) -> Result<(), Box<dyn Error>> {
+    if !address.ip().is_loopback() && allowed_networks.is_empty() {
+        return Err("non-loopback ASIC Stratum listener requires --allow-cidrs".into());
     }
     Ok(())
+}
+
+fn parse_allowed_cidrs(value: Option<&str>) -> Result<Vec<IpNet>, Box<dyn Error>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let values = value.split(',').collect::<Vec<_>>();
+    if values.is_empty() || values.len() > 16 || values.iter().any(|value| value.is_empty()) {
+        return Err("ASIC gateway accepts 1..16 comma-separated CIDRs".into());
+    }
+    values
+        .into_iter()
+        .map(|value| {
+            let network: IpNet = value.parse()?;
+            let trusted = match network {
+                IpNet::V4(network) => {
+                    network.prefix_len() >= 8
+                        && (network.network().is_private()
+                            || network.network().is_link_local()
+                            || network.network().is_loopback())
+                }
+                IpNet::V6(network) => {
+                    network.prefix_len() >= 16
+                        && (network.network().is_unique_local()
+                            || network.network().is_unicast_link_local()
+                            || network.network().is_loopback())
+                }
+            };
+            if !trusted {
+                return Err(format!(
+                    "ASIC gateway CIDR is not a bounded private network: {network}"
+                )
+                .into());
+            }
+            Ok(network)
+        })
+        .collect()
+}
+
+fn peer_allowed(peer: IpAddr, allowed_networks: &[IpNet]) -> bool {
+    peer.is_loopback()
+        || allowed_networks
+            .iter()
+            .any(|network| network.contains(&peer))
 }
 
 fn validate_runtime_path(path: &Path, description: &str) -> Result<(), Box<dyn Error>> {
@@ -416,6 +465,7 @@ fn validate_arguments(arguments: &[String]) -> Result<(), Box<dyn Error>> {
         "--profile",
         "--max-connections",
         "--max-requests",
+        "--allow-cidrs",
     ];
     const FLAG_ARGUMENTS: &[&str] = &["--production"];
 
@@ -469,10 +519,15 @@ mod tests {
     }
 
     #[test]
-    fn legacy_listener_is_loopback_only() {
-        assert!(validate_loopback("127.0.0.1:3333".parse().unwrap()).is_ok());
-        assert!(validate_loopback("[::1]:3333".parse().unwrap()).is_ok());
-        assert!(validate_loopback("0.0.0.0:3333".parse().unwrap()).is_err());
+    fn asic_listener_defaults_to_loopback_and_lan_access_is_explicit() {
+        assert!(validate_listener("127.0.0.1:3333".parse().unwrap(), &[]).is_ok());
+        assert!(validate_listener("[::1]:3333".parse().unwrap(), &[]).is_ok());
+        assert!(validate_listener("0.0.0.0:3333".parse().unwrap(), &[]).is_err());
+        let allowed = parse_allowed_cidrs(Some("192.168.50.0/24,fd00::/64")).unwrap();
+        assert!(validate_listener("0.0.0.0:3333".parse().unwrap(), &allowed).is_ok());
+        assert!(peer_allowed("192.168.50.20".parse().unwrap(), &allowed));
+        assert!(!peer_allowed("192.168.51.20".parse().unwrap(), &allowed));
+        assert!(parse_allowed_cidrs(Some("0.0.0.0/0")).is_err());
     }
 
     #[test]

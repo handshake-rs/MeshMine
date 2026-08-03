@@ -21,7 +21,7 @@ pub enum CaptureParameterError {
     InvalidBlindBand,
 }
 
-/// Decode `bits` with the same signed compact-number semantics as `hsd`.
+/// Decode `bits` with the same signed compact-number semantics as `HNS node`.
 pub fn compact_to_target(compact: u32) -> BigInt {
     if compact == 0 {
         return BigInt::ZERO;
@@ -44,7 +44,7 @@ pub fn compact_to_target(compact: u32) -> BigInt {
     target
 }
 
-/// Encode a non-negative target with the same canonical compaction as `hsd`.
+/// Encode a non-negative target with the same canonical compaction as `HNS node`.
 pub fn target_to_compact(target: &BigUint) -> u32 {
     if target.is_zero() {
         return 0;
@@ -67,7 +67,7 @@ pub fn target_to_compact(target: &BigUint) -> u32 {
     (exponent << 24) | mantissa
 }
 
-/// Compare an HNS proof hash to the compact target exactly as `hsd` does.
+/// Compare an HNS proof hash to the compact target exactly as `HNS node` does.
 pub fn verify_pow(hash: &Hash256, bits: u32) -> bool {
     let target = compact_to_target(bits);
     if target.sign() != Sign::Plus || target.bits() > 256 {
@@ -135,7 +135,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn matches_hsd_consensus_vector() {
+    fn matches_hns_consensus_vector() {
         let hash: Hash256 =
             hex::decode("0000000000000000348f8ef340a84844aaa09b067141ea6742991ab11b3f2b67")
                 .unwrap()
@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_decode_boundaries_match_hsd() {
+    fn compact_decode_boundaries_match_hns_consensus() {
         let cases = [
             (0x0000_0000, "0"),
             (0x0100_3456, "0"),
@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_encode_transitions_match_hsd() {
+    fn compact_encode_transitions_match_hns_consensus() {
         let cases = [
             ("0", 0x0000_0000),
             ("1", 0x0101_0000),

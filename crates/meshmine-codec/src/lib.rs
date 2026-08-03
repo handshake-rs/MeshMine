@@ -191,6 +191,16 @@ impl<'a> Decoder<'a> {
         Ok(self.take(length)?.to_vec())
     }
 
+    pub fn fixed_bytes(&mut self, length: usize, maximum: usize) -> Result<Vec<u8>, CodecError> {
+        if length > maximum || length > self.limits.max_object_bytes {
+            return Err(CodecError::LengthLimit {
+                actual: length,
+                maximum: maximum.min(self.limits.max_object_bytes),
+            });
+        }
+        Ok(self.take(length)?.to_vec())
+    }
+
     pub fn option<T>(
         &mut self,
         decode: impl FnOnce(&mut Self) -> Result<T, CodecError>,

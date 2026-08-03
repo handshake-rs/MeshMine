@@ -17,13 +17,13 @@ HNS MeshMine is a decentralized mining overlay for Handshake. It is designed to 
 
 MeshMine Core v2 is built around five decisions:
 
-1. **Every mining operator constructs its own Handshake block with its own `hsd` node.**
+1. **Every mining operator constructs its own Handshake block with its own `hns-node-rs` node.**
 2. **Concurrent weak work is disseminated through a share DAG rather than serialized into a linear P2Pool sharechain.** The authoritative payout set is a certified, append-only set of accepted shares; the DAG is used for gossip, causality, and partition reconciliation.
 3. **Handshake's XOR mining mask is generated through a proper distributed MPC/VSS protocol.** No single dealer learns the mask. Timed threshold opening is the block-recovery guarantee. A private immediate winner test is an optimization, not the liveness foundation.
 4. **Each MeshMine block pays a fixed number of probabilistically selected PPLNS work and service tickets directly in an ordinary HNS coinbase transaction.** Transaction and claim/airdrop fees remain with the independent template operator unless a later profile explicitly changes that rule.
 5. **ASIC search is divided into committed assignments with auditable job issuance and worker telemetry.** Core v2 does not claim that stock ASICs cryptographically prove exhaustive nonce-range traversal.
 
-MeshMine Core v2 does **not** require a Handshake hard fork. Every network block produced by MeshMine must be accepted by an unmodified `hsd` full node.
+MeshMine Core v2 does **not** require a Handshake hard fork. Every network block produced by MeshMine must be accepted by an unmodified `hns-node-rs` full node.
 
 The initial project goal is narrower than defeating an attacker that physically owns most HNS ASICs. No voluntary overlay can make genuine majority ownership harmless. MeshMine is intended to remove avoidable coordinator concentration:
 
@@ -39,7 +39,7 @@ The implementation must keep two validity domains separate:
 
 ```text
 Handshake-valid:
-    Accepted by an ordinary, unmodified hsd full node.
+    Accepted by an ordinary, unmodified hns-node-rs full node.
 
 MeshMine-valid:
     Handshake-valid and compliant with MM-0001 overlay rules.
@@ -57,7 +57,7 @@ MeshMine overlay status beyond whatever HNS consensus gives it.
 
 Core v2 specifies:
 
-- exact compatibility boundaries with `hsd`;
+- exact compatibility boundaries with `hns-node-rs`;
 - an acyclic object and identifier graph;
 - independently constructed block bodies;
 - stable, content-addressed body packages;
@@ -74,7 +74,7 @@ Core v2 specifies:
 
 ### 1.2 What Core v2 does not specify as production-ready
 
-The following remain parameterized research or deployment decisions:
+The following remain parameterized evaluation or deployment decisions:
 
 - production committee sizes and thresholds;
 - a production-audited malicious-secure MPC implementation;
@@ -100,7 +100,7 @@ A production implementation MUST NOT claim a stronger property than the relevant
 
 ## 2. Handshake primitives that constrain the design
 
-Codex MUST treat `hsd` as the byte-level and contextual-validity oracle. Bitcoin serialization or mining assumptions MUST NOT be imported where Handshake differs.
+Codex MUST treat `hns-node-rs` as the byte-level and contextual-validity oracle. Bitcoin serialization or mining assumptions MUST NOT be imported where Handshake differs.
 
 ### 2.1 Consensus header
 
@@ -124,7 +124,7 @@ The miner-oriented serialization is 256 bytes. It contains a 128-byte preheader 
 
 ### 2.2 Exact HNS proof-of-work construction
 
-The implementation MUST reproduce the current `hsd` operations byte-for-byte:
+The implementation MUST reproduce the current `hns-node-rs` operations byte-for-byte:
 
 ```text
 subheader =
@@ -156,9 +156,9 @@ shareHash = BLAKE2b-256(left || padding32 || right)
 powHash = shareHash XOR mask
 ```
 
-`padding20`, `padding32`, and `padding8` MUST use the exact deterministic padding rule in `hsd`: repeating bytes derived from `prevBlock XOR treeRoot`.
+`padding20`, `padding32`, and `padding8` MUST use the exact deterministic padding rule in `hns-node-rs`: repeating bytes derived from `prevBlock XOR treeRoot`.
 
-`powHash` is interpreted as a big-endian unsigned 256-bit integer for target comparison, matching `hsd`.
+`powHash` is interpreted as a big-endian unsigned 256-bit integer for target comparison, matching `hns-node-rs`.
 
 ### 2.3 Miner serialization
 
@@ -198,9 +198,9 @@ Any additional MeshMine commitments are carried in otherwise valid coinbase witn
 
 ### 2.5 Contextual validation without proof of work
 
-Before a body package can receive a MeshMine availability certificate, it MUST be validated by an unmodified or minimally wrapped `hsd` contextual validator with proof-of-work checking disabled. The preferred oracle is the same path used by `chain.verifyBlock(block)` with `VERIFY_POW` removed.
+Before a body package can receive a MeshMine availability certificate, it MUST be validated by an unmodified or minimally wrapped `hns-node-rs` contextual validator with proof-of-work checking disabled. The preferred oracle is the same path used by `chain.verifyBlock(block)` with `VERIFY_POW` removed.
 
-A separate reimplementation of HNS covenant, claim, airdrop, name-tree, fee, sigops, and contextual validation is not sufficient for certification until it has been differentially tested against `hsd`.
+A separate reimplementation of HNS covenant, claim, airdrop, name-tree, fee, sigops, and contextual validation is not sufficient for certification until it has been differentially tested against `hns-node-rs`.
 
 ---
 
@@ -279,8 +279,8 @@ No implementation may infer that one `n/t` pair has identical security for signa
 | local HNS ASIC |<------>| local MeshMine node |
 +----------------+        +---------------------+
         ^                         ^       ^
-        | local legacy/native     |       |
-        | gateway protocol        |       +--> local hsd
+        | local superseded/native     |       |
+        | gateway protocol        |       +--> local hns-node-rs
         |                         |
         |                         +--> MeshMine overlay
         |                                 |
@@ -339,7 +339,7 @@ Core v2 encoding rules:
 
 - unsigned integers are little-endian unless a field is explicitly a 256-bit target/hash integer;
 - HNS hashes and roots retain their canonical 32-byte wire representation;
-- 256-bit target comparisons use big-endian integer interpretation exactly as `hsd` does;
+- 256-bit target comparisons use big-endian integer interpretation exactly as `hns-node-rs` does;
 - byte arrays are length-prefixed with canonical unsigned varints;
 - vectors are length-prefixed and preserve specified ordering;
 - maps are forbidden in hashed objects unless represented as sorted vectors;
@@ -561,7 +561,7 @@ BlockBodyPackageV2 {
     claim_airdrop_fees: u64
     operator_fee_value: u64
     work_service_subsidy_value: u64
-    hsd_validation_result_hash: Hash256
+    consensus_validation_result_hash: Hash256
     operator_signature: Signature
 }
 ```
@@ -604,7 +604,7 @@ BodyAvailabilityCertificateV2 {
     descriptor_id: Hash256
     parent_hash: Hash256
     parent_height: u32
-    hsd_validation_result_hash: Hash256
+    consensus_validation_result_hash: Hash256
     challenge_round: u64
     challenge_transcript_root: Hash256
     signer_set: SignatureSet
@@ -629,7 +629,7 @@ SessionParentCertificateV2 {
 }
 ```
 
-Every participant independently verifies that the parent is a valid HNS header and that the stated chainwork matches its local `hsd` view before accepting the certificate.
+Every participant independently verifies that the parent is a valid HNS header and that the stated chainwork matches its local `hns-node-rs` view before accepting the certificate.
 
 ### 6.10 `MaskSessionV2`
 
@@ -778,7 +778,7 @@ The settlement layer uses close certificates, not an informal local view of the 
 
 ### 7.1 Local template sovereignty
 
-Each operator MUST run or explicitly connect to its own trusted `hsd`. The local MeshMine node obtains a template and constructs the final coinbase locally.
+Each operator MUST run or explicitly connect to its own trusted `hns-node-rs`. The local MeshMine node obtains a template and constructs the final coinbase locally.
 
 The node MUST independently choose:
 
@@ -832,7 +832,7 @@ Ordinary transaction fees:
     paid to the independent template operator.
 
 Claim and airdrop fees:
-    paid to the independent template operator unless hsd's exact
+    paid to the independent template operator unless hns-node-rs's exact
     contextual rules require another treatment.
 
 Claim and airdrop principal:
@@ -852,10 +852,10 @@ This is intentional. An operator that includes better fee-paying transactions re
 6. Reserve the exact coinbase base size, witness size, weight, and sigops.
 7. Select non-coinbase transactions within remaining HNS limits.
 8. Construct final coinbase and ordered transaction vector.
-9. Calculate merkleRoot and witnessRoot with hsd-compatible algorithms.
+9. Calculate merkleRoot and witnessRoot with hns-node-rs-compatible algorithms.
 10. Build TemplateCoreV2 and verify its ID matches the committed witness.
 11. Build BlockBodyPackageV2.
-12. Ask hsd to contextually validate the complete body without PoW.
+12. Ask hns-node-rs to contextually validate the complete body without PoW.
 13. Publish/erasure-code the body and obtain availability certification.
 14. Reuse the certified body across compatible mask sessions.
 ```
@@ -1149,11 +1149,11 @@ A production mask backend MUST provide:
 - transcript commitment;
 - explicit corruption and synchrony assumptions.
 
-A research implementation MAY use MP-SPDZ or another framework as a circuit and benchmarking backend. Such a backend MUST NOT be described as production-audited merely because it implements a named malicious-secure protocol.
+A evaluation implementation MAY use MP-SPDZ or another framework as a circuit and benchmarking backend. Such a backend MUST NOT be described as production-audited merely because it implements a named malicious-secure protocol.
 
 ### 10.6 Exact BLAKE2b circuit
 
-The MPC implementation MUST reproduce standard BLAKE2b-256 as used by `hsd`, including:
+The MPC implementation MUST reproduce standard BLAKE2b-256 as used by `hns-node-rs`, including:
 
 - 64-bit little-endian words;
 - initialization vector;
@@ -1164,7 +1164,7 @@ The MPC implementation MUST reproduce standard BLAKE2b-256 as used by `hsd`, inc
 - XOR and rotation operations;
 - input `prevBlock || mask` in canonical byte order.
 
-The differential test suite MUST compare at least 10,000 generated MPC/opened masks against `hsd` or `bcrypto` outputs.
+The differential test suite MUST compare at least 10,000 generated MPC/opened masks against `hns-node-rs` or `bcrypto` outputs.
 
 ### 10.7 Session setup
 
@@ -1213,7 +1213,7 @@ After `timed_open_after_ms`:
 3. observers verify `maskHash`;
 4. observers evaluate every accepted capture share;
 5. any network-winning block is reconstructed from its body package;
-6. multiple independent nodes submit the ordinary HNS block to their local `hsd` peers.
+6. multiple independent nodes submit the ordinary HNS block to their local `hns-node-rs` peers.
 
 The original miner is not required after the share has both:
 
@@ -1532,7 +1532,7 @@ work_pool    = S - service_pool
 
 Transaction and claim/airdrop fees are not included in these pools under the Core v2 baseline; they go to the template operator.
 
-`alpha` MUST be bounded by profile and justified through cost measurement. Illustrative research range: 2%–6%.
+`alpha` MUST be bounded by profile and justified through cost measurement. Illustrative evaluation range: 2%–6%.
 
 ### 13.8 Ticket values and remainders
 
@@ -1561,7 +1561,7 @@ Service credit MUST be capped per event and per role. A committee cannot create 
 
 ### 13.10 Coinbase output ordering
 
-The body builder MUST use exact `hsd` coinbase semantics.
+The body builder MUST use exact `hns-node-rs` coinbase semantics.
 
 Recommended ordering:
 
@@ -1599,7 +1599,7 @@ maximum total coinbase outputs:
     miner reward + claim/airdrop principal
 ```
 
-The final byte sequence MUST be validated through `hsd`; MeshMine must not rely on a simplified independent formula.
+The final byte sequence MUST be validated through `hns-node-rs`; MeshMine must not rely on a simplified independent formula.
 
 ### 13.12 Current payable plan
 
@@ -1719,7 +1719,7 @@ Such a finding proves only that the interval contains the nonce, not that untrus
 
 Every session is bound to a `SessionParentCertificateV2`.
 
-A participant MUST reject a session if its local `hsd` cannot verify the parent header and chainwork.
+A participant MUST reject a session if its local `hns-node-rs` cannot verify the parent header and chainwork.
 
 The parent certificate is an overlay agreement on which currently observed HNS tip a session mines. It is not an HNS checkpoint and cannot override HNS consensus.
 
@@ -1766,7 +1766,7 @@ On reorganization:
 
 The native overlay SHOULD use authenticated QUIC or libp2p over QUIC. Large body data MUST use request/response streams, not unrestricted gossip.
 
-Legacy Stratum, if used, terminates locally between an ASIC and its own MeshMine gateway. It is not the MeshMine peer protocol.
+Superseded Stratum, if used, terminates locally between an ASIC and its own MeshMine gateway. It is not the MeshMine peer protocol.
 
 ### 16.2 Gossip topics
 
@@ -1894,7 +1894,7 @@ The implementation SHOULD define a storage trait and begin with a transactional 
 
 ```text
 LOCAL_DRAFT
-    -> HSD_VALIDATED
+    -> NODE_VALIDATED
     -> ERASURE_PUBLISHED
     -> AVAILABILITY_CERTIFIED
     -> ACTIVE
@@ -1962,7 +1962,7 @@ On reorg:
 
 ```text
 function derive_capture(bits, blind_bits):
-    T_net = hsd_decode_compact(bits)
+    T_net = hns_decode_compact(bits)
     bytes = encode_uint256_be(T_net)
     p = count_leading_zero_bits(bytes)
 
@@ -1992,7 +1992,7 @@ function validate_share(share, assignment, session, body):
     require valid_signatures(share, assignment)
     require valid_body_certificate(body)
 
-    miner_header = build_hsd_miner_header(
+    miner_header = build_hns_miner_header(
         body.static_roots,
         session.mask_hash,
         share.nonce,
@@ -2002,7 +2002,7 @@ function validate_share(share, assignment, session, body):
         body.bits
     )
 
-    raw = hsd_share_hash(miner_header)
+    raw = hns_share_hash(miner_header)
     require raw == share.raw_share_hash
     require uint256_be(raw) <= session.capture_target
 
@@ -2027,7 +2027,7 @@ function open_session(close, opening_shares):
         pow = share.raw_share_hash XOR mask
         if uint256_be(pow) <= session.hns_network_target:
             block = reconstruct_block(share, mask)
-            require hsd_verify_full_block(block)
+            require hns_verify_full_block(block)
             winners.push(block)
 
     gossip_and_submit_all(winners)
@@ -2078,7 +2078,7 @@ one remote server changes parent/template
 MeshMine:
 
 ```text
-local hsd and local template constructor choose body
+local hns-node-rs and local template constructor choose body
     -> no remote template command exists
 ```
 
@@ -2181,16 +2181,17 @@ A block explorer SHOULD distinguish “MeshMine produced this block” from “o
 Recommended architecture:
 
 ```text
-Rust workspace:
-    protocol types, HNS serialization, networking, storage,
-    share validation, payout math, gateway, simulation.
+External handshake-rs/hns-node-rs workspace:
+    Handshake consensus, active-chain authority, mining templates,
+    candidate validation, and HNSA/HNSR protocol implementation.
 
-Node.js hsd oracle harness:
-    imports hsd directly for differential vectors and contextual validation tests.
+MeshMine Rust workspace:
+    overlay types, networking, storage, share validation, payout math,
+    Core/operator transport, ASIC gateway, public statistics, and simulation.
 
 MPC backend process:
     isolated process with a versioned RPC interface;
-    research backend first, independently audited backend required later.
+    evaluation backend first, independently audited backend required later.
 ```
 
 ### 22.2 Repository layout
@@ -2200,9 +2201,9 @@ HNS-MeshMine/
 ├── CODEX.md
 ├── README.md
 ├── Cargo.toml
+├── MeshMine.md
 ├── specs/
-│   ├── MM-0001-Core-v2.md
-│   ├── wire-vectors/
+│   ├── pool-stats-profile.md
 │   └── threat-model.md
 ├── crates/
 │   ├── meshmine-types/
@@ -2216,18 +2217,16 @@ HNS-MeshMine/
 │   ├── meshmine-network/
 │   ├── meshmine-storage/
 │   ├── meshmine-gateway/
+│   ├── meshmine-hsrd-bridge/
+│   ├── meshmine-core-link/
+│   ├── meshmine-pool-stats/
 │   ├── meshmine-committee-risk/
 │   └── meshmine-sim/
 ├── bins/
-│   ├── meshmine-node/
-│   ├── meshmine-cli/
+│   ├── meshmine-cored/
+│   ├── meshmine-corelink-operatord/
 │   ├── meshmine-gateway/
-│   └── meshmine-sim/
-├── hsd-oracle/
-│   ├── package.json
-│   ├── generate-vectors.js
-│   ├── validate-body.js
-│   └── regtest-driver.js
+│   └── meshmine-workd/
 ├── mpc/
 │   ├── README.md
 │   ├── circuits/
@@ -2237,11 +2236,8 @@ HNS-MeshMine/
 │   ├── mask-session.tla
 │   ├── receipt-close.tla
 │   └── payout-snapshot.tla
-└── tests/
-    ├── differential/
-    ├── adversarial/
-    ├── integration/
-    └── hardware/
+└── scripts/
+    └── fail-closed source-boundary checks
 ```
 
 ### 22.3 Coding rules
@@ -2254,7 +2250,8 @@ HNS-MeshMine/
 - Every network object is versioned.
 - Every certificate verifies signer eligibility for that exact role and epoch.
 - Every write path has crash-recovery tests.
-- Every HNS-sensitive calculation has an `hsd` differential oracle test.
+- HNS-sensitive authority remains in pinned external `handshake-rs` crates.
+- Repeated share validation must not add per-share node RPC round trips.
 - Mainnet support remains disabled until an explicit release gate is met.
 
 ---
@@ -2281,8 +2278,8 @@ Implement:
 
 Acceptance:
 
-- 10,000 randomized vectors match `hsd` byte-for-byte;
-- all current `hsd` edge vectors pass;
+- fixed vectors and external-crate compatibility tests pass;
+- all compact-target and serialization edge vectors pass;
 - endian and boundary tests include zero, maximum, and compact-target transition cases.
 
 ### WP2 — Acyclic object model and codec
@@ -2293,7 +2290,7 @@ Acceptance:
 
 - dependency graph test proves no ID depends on itself;
 - signatures are excluded exactly as specified;
-- golden vectors exist in Rust and Node.js;
+- golden vectors exist in Rust;
 - malformed lengths and noncanonical encodings are rejected.
 
 ### WP3 — Local regtest miner
@@ -2301,8 +2298,8 @@ Acceptance:
 Build:
 
 ```text
-hsd regtest
-    + local MeshMine node
+hns-node-rs regtest
+    + MeshMine Core/operator
     + CPU proof simulator
 ```
 
@@ -2313,7 +2310,7 @@ Acceptance:
 - finds a capture share and network winner on regtest;
 - opens mask;
 - reconstructs ordinary HNS block;
-- unmodified `hsd` accepts it.
+- unmodified `hns-node-rs` accepts it.
 
 ### WP4 — Stable body package and contextual validation
 
@@ -2322,14 +2319,14 @@ Implement:
 - TemplateCore commitment;
 - exact coinbase payout skeleton;
 - body-package ID;
-- `hsd` contextual validation adapter;
+- direct external-node contextual validation boundary;
 - body reuse across mask sessions.
 
 Acceptance:
 
 - changing DAG parents, assignments, or masks does not change body ID;
 - changing a transaction, payout destination, or operator fee does change body ID;
-- invalid covenant/claim/airdrop bodies fail through `hsd`.
+- invalid covenant/claim/airdrop bodies fail through `hns-node-rs`.
 
 ### WP5 — Erasure availability
 
@@ -2371,7 +2368,7 @@ Acceptance:
 
 ### WP7 — Timed VSS mask opening
 
-Implement a research-grade distributed mask setup with verifiable threshold opening. Do not implement fast winner MPC first.
+Implement an evaluation-grade distributed mask setup with verifiable threshold opening. Do not implement fast winner MPC first.
 
 Acceptance:
 
@@ -2424,7 +2421,7 @@ Acceptance:
 - Monte Carlo payout means converge to work proportions;
 - no modulo bias in exhaustive small-domain tests;
 - total outputs never exceed HNS-valid value;
-- unmodified `hsd` accepts generated blocks;
+- unmodified `hns-node-rs` accepts generated blocks;
 - duplicate winners combine deterministically.
 
 ### WP11 — Local ASIC compatibility gateway
@@ -2489,7 +2486,7 @@ Acceptance gates:
 
 ### 24.1 Differential HNS tests
 
-Compare Rust against `hsd` for:
+Compare Rust against `hns-node-rs` for:
 
 - every header field;
 - miner serialization;
@@ -2655,7 +2652,7 @@ Future proposals may include:
 - consensus-recognized payout roots;
 - a payout-tree covenant;
 - proof-carrying coinbase accounting;
-- weak-share commitments for monitoring or finality research;
+- weak-share commitments for monitoring or finality evaluation;
 - hybrid external-security checkpoints.
 
 Those are out of scope for MM-0001.
@@ -2683,61 +2680,12 @@ A release MUST NOT be labeled production-ready unless all of the following are t
 
 ## 27. Codex master implementation instruction
 
-The following block may be copied into the repository as `CODEX.md`.
-
-```text
-You are implementing HNS MeshMine MM-0001 Core v2.
-
-Treat specs/MM-0001-Core-v2.md as normative. The project is a
-no-hard-fork overlay. Every emitted network block must be accepted by an
-unmodified hsd node.
-
-Absolute rules:
-
-1. Do not import Bitcoin header, coinbase, target, or merkle assumptions
-   where Handshake differs.
-2. Match hsd byte-for-byte for header serialization, miner serialization,
-   padding, subHash, maskHash, commitHash, shareHash, powHash, compact
-   targets, coinbase construction, merkle root, witness root, and full
-   contextual block validity.
-3. Never use floating point for targets, work, reward allocation, or
-   payout selection.
-4. Never hash JSON. Use the canonical binary codec.
-5. Every object ID excludes its own ID and signatures. Reject any circular
-   dependency in tests.
-6. The body package is stable and does not include a mask session, DAG
-   parents, assignment root, or receipt state.
-7. The share DAG is for dissemination and reconciliation. Receipt batches
-   and session-close certificates define the authoritative accepted set.
-8. Timed threshold opening is the mask-recovery guarantee. Fast private
-   winner evaluation is optional and may abort only into timed recovery.
-9. Do not claim that committed nonce assignments prove exhaustive search
-   on stock ASIC hardware.
-10. Mainnet and dynamic committees remain disabled until explicit release
-    gates are satisfied.
-
-Implementation order:
-
-- Complete WP1 only.
-- Run Rust and Node.js differential vectors.
-- Do not begin WP2 until WP1 is green.
-- Continue one work package at a time, preserving compilation and tests.
-- For each package, update threat-model notes, wire vectors, and recovery
-  tests before moving on.
-
-Required first deliverable:
-
-- crates/meshmine-hns with exact HNS primitives;
-- hsd-oracle vector generator;
-- 10,000 deterministic randomized vectors;
-- compact-target boundary tests;
-- CI that fails on any Rust/hsd mismatch.
-
-When a specification detail is ambiguous, stop implementation of that
-specific detail, add an OPEN-QUESTION entry with the exact dependency and
-security consequence, and continue only on independent work. Do not invent
-consensus-sensitive behavior.
-```
+Repository implementation rules live in `CODEX.md`. They require the pinned
+external `handshake-rs/hns-node-rs` packages for Handshake-sensitive authority,
+forbid a second embedded consensus implementation, require canonical binary
+encoding and bounded parsers, and keep mainnet eligibility disabled until its
+release gates pass. An ambiguous consensus-sensitive detail is recorded in
+`specs/OPEN-QUESTIONS.md`; it is not filled in by local convention.
 
 ---
 
@@ -2746,8 +2694,8 @@ consensus-sensitive behavior.
 ### HNS compatibility
 
 ```text
-H1 Every submitted MeshMine block is valid to unmodified hsd.
-H2 All HNS-sensitive byte operations match hsd.
+H1 Every submitted MeshMine block is valid to unmodified hns-node-rs.
+H2 All HNS-sensitive byte operations match hns-node-rs.
 H3 MeshMine does not change HNS fork choice or chainwork.
 ```
 
@@ -2797,7 +2745,7 @@ P3 Ticket selection uses deterministic rejection sampling.
 P4 Work tickets are proportional in expectation to credited work.
 P5 Service compensation is bounded.
 P6 Transaction fees remain with the template operator in Core v2.
-P7 Coinbase output values and ordering pass hsd contextual validation.
+P7 Coinbase output values and ordering pass hns-node-rs contextual validation.
 ```
 
 ### Telemetry
@@ -2832,23 +2780,21 @@ Open questions MUST remain visible in issue tracking and release documentation.
 
 The implementation should be continuously checked against these upstream sources:
 
-- Handshake header and mask construction:  
-  `https://github.com/handshake-org/hsd/blob/master/lib/primitives/abstractblock.js`
-- Handshake block-template and coinbase construction:  
-  `https://github.com/handshake-org/hsd/blob/master/lib/mining/template.js`
-- Handshake block and root validation:  
-  `https://github.com/handshake-org/hsd/blob/master/lib/primitives/block.js`
-- Handshake transaction and coinbase witness behavior:  
-  `https://github.com/handshake-org/hsd/blob/master/lib/primitives/tx.js`
-- Handshake contextual block validation:  
-  `https://github.com/handshake-org/hsd/blob/master/lib/blockchain/chain.js`
-- HandyStratum HNS job compatibility reference:  
+- Rust Handshake node and consensus implementation:
+  `https://github.com/handshake-rs/hns-node-rs`
+- Rust Handshake protocol libraries and HIP implementations:
+  `https://github.com/handshake-rs/hns-rs`
+- HNSA proposal:
+  `https://github.com/handshake-org/HIPs/pull/79`
+- HNSR proposal:
+  `https://github.com/handshake-org/HIPs/pull/78`
+- HandyStratum HNS job compatibility reference:
   `https://github.com/HandyOSS/HandyStratum/blob/master/docs/spec.md`
-- MP-SPDZ research and benchmarking backend:  
+- MP-SPDZ evaluation and benchmarking backend:
   `https://github.com/data61/MP-SPDZ`
-- Fairness/output-delivery distinction in MPC literature:  
+- Fairness/output-delivery distinction in MPC literature:
   `https://eprint.iacr.org/2015/574`
-- Auditable proof-of-work research reference:  
+- Auditable proof-of-work evaluation reference:
   `https://arxiv.org/abs/2601.02496`
 
 ---

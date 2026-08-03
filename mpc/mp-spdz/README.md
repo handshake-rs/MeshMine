@@ -94,7 +94,7 @@ not portable release binaries.
 
 ## Security model and trust boundary
 
-The local research claim assumes MP-SPDZ's malicious
+The local evaluation claim assumes MP-SPDZ's malicious
 dishonest-majority MASCOT/Tinier security: setup privacy and correctness-or-
 abort require at least one honest computing party, computational assumptions,
 uncompromised local processes/keys, and authenticated reliable channels. The

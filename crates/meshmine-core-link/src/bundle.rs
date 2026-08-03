@@ -206,7 +206,7 @@ impl CoreAssignmentBundleV1 {
             &self.body.coinbase_raw,
             &self.body.transactions_raw,
         );
-        if expected_validation != self.body.hsd_validation_result_hash {
+        if expected_validation != self.body.consensus_validation_result_hash {
             return Err(BundleError::Linkage("body validation commitment"));
         }
         let assignment_id = self.assignment.object_id();
@@ -228,8 +228,8 @@ impl CoreAssignmentBundleV1 {
             || self.body_certificate.descriptor_id != descriptor_id
             || self.body_certificate.parent_hash != self.parent_certificate.parent_hash
             || self.body_certificate.parent_height != self.parent_certificate.parent_height
-            || self.body_certificate.hsd_validation_result_hash
-                != self.body.hsd_validation_result_hash
+            || self.body_certificate.consensus_validation_result_hash
+                != self.body.consensus_validation_result_hash
             || self.assignment.payout_bucket_id != bucket_id
             || self.assignment.operator_pubkey != self.body.template_core.operator_pubkey
             || self.assignment.operator_pubkey != self.payout_bucket.operator_pubkey

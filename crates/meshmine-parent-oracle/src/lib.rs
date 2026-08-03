@@ -3,7 +3,7 @@
 //! The oracle deliberately supports one bounded, authenticated, loopback hsrd
 //! JSON-RPC source. It consumes one immutable `getparentauthority` snapshot so
 //! authority, active-tip membership, validation status, and header fields
-//! cannot be assembled across a tip transition. HSD is an offline fixture
+//! cannot be assembled across a tip transition. HNS node is an offline fixture
 //! oracle only and has no runtime role here.
 
 #![forbid(unsafe_code)]

@@ -43,12 +43,14 @@ tested-nonce set.
 
 ## Executable boundary
 
-The `meshmine-gateway` executable wraps this adapter with an explicit
-loopback-only listener, redb state path, bounded connection/request counts, and
-a canonical job file. State, job, and password paths must be absolute so a
+The `meshmine-gateway` executable wraps this adapter with a private-network
+allowlisted listener, redb state path, bounded connection/request counts, and
+a canonical job file. Loopback is the default. A non-loopback bind requires
+`--allow-cidrs` with bounded private, link-local, or loopback networks; public
+or excessively broad ranges fail closed. State, job, and password paths must be absolute so a
 service working-directory change cannot select a fresh nonce namespace or
 different credentials. Profile selection is mandatory: `--profile simulator`
-selects the deliberately relaxed research target policy, while `handyminer`,
+selects the deliberately relaxed evaluation target policy, while `handyminer`,
 `hs3`, and `goldshell` select exact HandyStratum integer-difficulty target
 enforcement. Unknown or duplicate CLI options fail rather than being ignored.
 `--production` currently rejects every profile because none has the required
@@ -94,7 +96,7 @@ operator path: it exchanges exact signed assignment bundles and captures with
 `meshmine-cored` over a private Unix-domain connection authenticated by Linux
 peer credentials and pinned Ed25519 identities; Core constructs exact `ShareV2`
 objects and returns durable signed terminal receipts. The Core daemon performs
-bounded authenticated loopback native-`hsrd` parent qualification with no HSD
+bounded authenticated loopback native-`hsrd` parent qualification with no hns-node-rs
 runtime dependency, while the operator composes concurrent sessions, reconnect
 backoff, fallback hysteresis, assignment draining, the event journal, the
 read-only dashboard, and graceful shutdown. Physical hardware qualification is
@@ -105,9 +107,8 @@ The RPC password comparison has a fixed bounded loop. After eight failed
 connection is closed. The executable also stops after 32 cumulative failed
 attempts across connections, so reconnecting cannot multiply guesses for the
 lifetime of one process. This counter is not durable across service restart or
-shared by multiple gateway processes; the loopback-only listener therefore
-still relies on host isolation and is not a production principal/rate-limit
-service.
+shared by multiple gateway processes. LAN deployment therefore still requires
+segmentation and is not a production device-identity or rate-limit service.
 
 ## Gateway-to-Core boundary status
 

@@ -932,7 +932,7 @@ mod tests {
     async fn retryable_result_advances_once_and_terminal_result_is_not_resubmitted() {
         let store: Arc<dyn DurableStore> = Arc::new(MemoryStore::default());
         let (target, calls) = target(
-            "local-hsd",
+            "local-consensus-node",
             0,
             vec![
                 response(PublicationResultKind::Retryable, 1),
@@ -941,7 +941,7 @@ mod tests {
         );
         let mut publisher =
             DurableBlockPublisher::new(Arc::clone(&store), vec![Arc::clone(&target)]).unwrap();
-        let candidate = intent(&["local-hsd"]);
+        let candidate = intent(&["local-consensus-node"]);
 
         let first = publisher.publish(candidate.clone()).await.unwrap();
         assert_eq!(first.targets[0].attempt_sequence, 1);
@@ -1005,8 +1005,11 @@ mod tests {
 
     #[test]
     fn target_set_and_payload_are_canonical_and_bounded() {
-        let candidate = intent(&["relay-z", "local-hsd"]);
-        assert_eq!(candidate.target_ids, vec!["local-hsd", "relay-z"]);
+        let candidate = intent(&["relay-z", "local-consensus-node"]);
+        assert_eq!(
+            candidate.target_ids,
+            vec!["local-consensus-node", "relay-z"]
+        );
         let bytes = candidate.to_canonical_bytes();
         let decoded = BlockPublicationIntentV1::from_canonical_bytes(
             &bytes,
@@ -1036,7 +1039,7 @@ mod tests {
     async fn configured_targets_must_exactly_match_the_durable_intent() {
         let store: Arc<dyn DurableStore> = Arc::new(MemoryStore::default());
         let (only, calls) = target(
-            "local-hsd",
+            "local-consensus-node",
             0,
             vec![response(PublicationResultKind::Accepted, 1)],
         );
@@ -1052,8 +1055,8 @@ mod tests {
     #[tokio::test]
     async fn unfinished_attempt_is_resubmitted_with_the_same_sequence_after_restart() {
         let store: Arc<dyn DurableStore> = Arc::new(MemoryStore::default());
-        let (panicking, panic_calls) = target("local-hsd", 0, Vec::new());
-        let candidate = intent(&["local-hsd"]);
+        let (panicking, panic_calls) = target("local-consensus-node", 0, Vec::new());
+        let candidate = intent(&["local-consensus-node"]);
         let mut first = DurableBlockPublisher::new(Arc::clone(&store), vec![panicking]).unwrap();
         assert!(matches!(
             first.publish(candidate.clone()).await,
@@ -1062,7 +1065,7 @@ mod tests {
         assert_eq!(panic_calls.load(Ordering::SeqCst), 1);
 
         let (replacement, replacement_calls) = target(
-            "local-hsd",
+            "local-consensus-node",
             0,
             vec![response(PublicationResultKind::AlreadyKnown, 7)],
         );
@@ -1077,8 +1080,14 @@ mod tests {
     #[test]
     fn mainnet_network_identifier_zero_is_valid() {
         assert!(
-            BlockPublicationIntentV1::new(0, [1; 32], [2; 32], vec![1], vec!["local-hsd".into()],)
-                .is_ok()
+            BlockPublicationIntentV1::new(
+                0,
+                [1; 32],
+                [2; 32],
+                vec![1],
+                vec!["local-consensus-node".into()],
+            )
+            .is_ok()
         );
     }
 }

@@ -21,7 +21,7 @@ use thiserror::Error;
 
 use super::{
     BackendSecurityProperties, MATERIAL_NAMESPACE, MpcError, OpeningShare,
-    RETIRED_SESSION_NAMESPACE, ResearchSetup, SESSION_RESERVATION_NAMESPACE, SetupRequest,
+    RETIRED_SESSION_NAMESPACE, SESSION_RESERVATION_NAMESPACE, SetupRequest, VssSetup,
     decode_opening_share, encode_opening_share, logical_session_key, material_key,
     opening_commitment, opening_message, verify_opening_signature,
 };
@@ -148,7 +148,7 @@ pub struct DistributedSetupContribution {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DistributedSetupAssembly {
-    pub setup: ResearchSetup,
+    pub setup: VssSetup,
     pub artifact_id: Hash256,
     pub public_output_id: Hash256,
     pub contribution_root: Hash256,
@@ -561,7 +561,7 @@ pub fn assemble_distributed_setup(
         &ordered,
     );
     Ok(DistributedSetupAssembly {
-        setup: ResearchSetup {
+        setup: VssSetup {
             session_binding: expected_binding,
             parent_hash: request.parent_hash,
             mask_hash,
@@ -581,7 +581,7 @@ pub fn assemble_distributed_setup(
 }
 
 /// Manifest for the exact ARM64 three-party conformance execution documented
-/// in `mpc/mp-spdz/README.md`. It remains research-only and is not a normative
+/// in `mpc/mp-spdz/README.md`. It remains test-only and is not a normative
 /// mainnet committee profile.
 pub fn reviewed_three_party_fixture_manifest() -> MpSpdzArtifactManifest {
     MpSpdzArtifactManifest {
@@ -995,8 +995,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        MpcBackend, ResearchVssBackend, SessionPhase, TimedOpeningGate, evaluate_accepted_winners,
-        shamir_split,
+        DeterministicVssBackend, MpcBackend, SessionPhase, TimedOpeningGate,
+        evaluate_accepted_winners, shamir_split,
     };
 
     fn secure_tempdir() -> std::io::Result<TempDir> {
@@ -1151,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn distributed_setup_rejects_research_only_zero_blind_band_everywhere() {
+    fn distributed_setup_rejects_test_only_zero_blind_band_everywhere() {
         let mut stock_regtest = request();
         stock_regtest.leading_zero_prefix_q = 1;
         stock_regtest.blind_band_bits_d = 0;
@@ -1265,7 +1265,7 @@ mod tests {
             })
             .collect();
         assert_ne!(openings[0].values, mask);
-        let backend = ResearchVssBackend::new(&stores[0]);
+        let backend = DeterministicVssBackend::new(&stores[0]);
         assert!(matches!(
             backend.timed_open(
                 &assembled.setup,

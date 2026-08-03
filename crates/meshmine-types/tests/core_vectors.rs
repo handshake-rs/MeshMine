@@ -62,7 +62,7 @@ fn rust_matches_node_core_v2_golden_vectors() {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../specs/wire-vectors/core-v2.json");
     let file: VectorFile = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
-    assert_eq!(file.wire_profile, "meshmine-core-v2-research");
+    assert_eq!(file.wire_profile, "meshmine-core-v2");
     let vectors: HashMap<_, _> = file
         .vectors
         .into_iter()
@@ -185,7 +185,7 @@ fn rust_matches_node_core_v2_golden_vectors() {
         claim_airdrop_fees: 22,
         operator_fee_value: 23,
         work_service_subsidy_value: 24,
-        hsd_validation_result_hash: hash(25),
+        consensus_validation_result_hash: hash(25),
         operator_signature: signature(26),
     };
     assert_vector(&vectors, "body-package-v2", &body);
@@ -210,7 +210,7 @@ fn rust_matches_node_core_v2_golden_vectors() {
         descriptor_id: hash(1),
         parent_hash: hash(2),
         parent_height: 3,
-        hsd_validation_result_hash: hash(4),
+        consensus_validation_result_hash: hash(4),
         challenge_round: 5,
         challenge_transcript_root: hash(6),
         signer_set: signer_set(),

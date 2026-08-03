@@ -1,4 +1,4 @@
-//! Algorithm-agile signing boundary for the Core v2 research profile.
+//! Algorithm-agile signing boundary for the Core v2 test profile.
 //!
 //! Suite 1 is Ed25519. Signatures cover a context-bound hash containing the
 //! object domain, network, protocol version, and completed unsigned object ID.

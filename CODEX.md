@@ -1,9 +1,9 @@
 # MeshMine implementation rules
 
-`MeshMine.md` is normative. MeshMine is a no-hard-fork Handshake overlay, and every emitted network block must be accepted by an unmodified `hsd` node.
+`MeshMine.md` is normative. MeshMine is a no-hard-fork Handshake overlay, and every emitted network block must be accepted by canonical Handshake consensus in `handshake-rs/hns-node-rs`.
 
 - Do not import Bitcoin serialization, target, header, coinbase, or Merkle assumptions where Handshake differs.
-- Match `hsd` byte-for-byte for all HNS-sensitive operations.
+- Use the external `handshake-rs` crates for HNS-sensitive operations; do not carry an embedded node or duplicate consensus implementation.
 - Never use floating point for targets, work, reward allocation, or payout selection.
 - Never derive protocol hashes from JSON; use the canonical binary codec.
 - Object identifiers exclude their own IDs and signatures.
@@ -14,4 +14,3 @@
 - Mainnet and dynamic committees stay disabled until the specification's release gates pass.
 
 Work packages are sequential. Complete and verify WP1 before starting WP2, and keep each package compiling and tested before proceeding.
-

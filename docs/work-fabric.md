@@ -25,9 +25,10 @@ and belongs behind a backend adapter.
   backend contract, exact capture verification, durable capture spool, and
   adaptive submission-target control.
 - `meshmine-workd`: initializes and inspects the local redb work database.
-- `meshmine-operatord`: a separate continuous local supervisor for gateway
-  serving, safe-mode/fallback handling, ACK-only capture reconciliation, and a
-  dashboard; it does not yet compose the `meshmine-work` coordinator.
+- `meshmine-corelink-operatord`: the continuous local supervisor for gateway
+  serving, safe-mode/fallback handling, durable Core reconciliation, dashboard,
+  and signed public statistics; it does not yet compose the `meshmine-work`
+  coordinator.
 - `meshmine-gateway`: the first real adapter boundary for HandyStratum HNS ASICs,
   including local-lease enforcement and durable downstream acknowledgment.
 
@@ -153,8 +154,8 @@ kernel or every vendor protocol is already implemented.
 
 ## Current limitations
 
-- Neither `meshmine-operatord` nor `meshmine-corelink-operatord` currently drives
-  the `meshmine-work` planner, lease lifecycle, or backend contract end to end.
+- `meshmine-corelink-operatord` does not yet drive the `meshmine-work` planner,
+  lease lifecycle, or backend contract end to end.
 - `meshmine-workd` currently exposes only bounded database initialization and
   status inspection; it does not run a planner or backend service loop.
 - No production ARM64, x86, CUDA, or ROCm hash kernel is included.

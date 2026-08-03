@@ -16,26 +16,3 @@ thiserror.workspace = true
 
 [dev-dependencies]
 hex.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-
-[[bin]]
-name = "verify-hsd-vectors"
-path = "src/bin/verify_hsd_vectors.rs"
-required-features = ["vector-verifier"]
-
-[features]
-default = []
-vector-verifier = ["dep:hex", "dep:serde", "dep:serde_json"]
-
-[dependencies.hex]
-workspace = true
-optional = true
-
-[dependencies.serde]
-workspace = true
-optional = true
-
-[dependencies.serde_json]
-workspace = true
-optional = true

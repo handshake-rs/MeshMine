@@ -1620,6 +1620,23 @@ mod tests {
         application.gate.release();
         watchdog.join().unwrap();
 
+        timeout(Duration::from_secs(1), async {
+            loop {
+                let charged = admission
+                    .lock()
+                    .unwrap()
+                    .peers
+                    .get(&peer)
+                    .is_some_and(|state| state.body_download_bytes == 4);
+                if charged {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .expect("the detached response load must charge its completed response");
+
         assert!(matches!(
             timeout(
                 Duration::from_secs(1),

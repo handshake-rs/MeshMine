@@ -1,6 +1,6 @@
 //! Handshake-native primitives used by MeshMine.
 //!
-//! This crate mirrors `hsd`'s consensus-sensitive header and proof code. Hash
+//! This crate mirrors `HNS node`'s consensus-sensitive header and proof code. Hash
 //! bytes are kept in their canonical HNS wire order and proof comparisons
 //! interpret them as unsigned big-endian integers.
 

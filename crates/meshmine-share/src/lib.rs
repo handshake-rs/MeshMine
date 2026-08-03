@@ -75,7 +75,7 @@ pub struct ShareValidationContext<'a> {
     /// the certified session submission window is open.
     pub observed_ms: u64,
     /// Committee signatures do not replace the participant's independent
-    /// local `hsd` header and chainwork check.
+    /// local `HNS node` header and chainwork check.
     pub parent_oracle: &'a dyn ParentChainOracle,
 }
 
@@ -502,7 +502,8 @@ fn validate_share_with_assignment(
     }
     if context.body_certificate.parent_hash != session.parent_hash
         || context.body_certificate.parent_height != context.parent_certificate.parent_height
-        || context.body_certificate.hsd_validation_result_hash != body.hsd_validation_result_hash
+        || context.body_certificate.consensus_validation_result_hash
+            != body.consensus_validation_result_hash
     {
         return Err(ShareError::Linkage("body certificate context"));
     }

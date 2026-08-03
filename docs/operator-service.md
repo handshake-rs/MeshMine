@@ -1,142 +1,63 @@
 # Unified operator service
 
-Status: source-complete pre-production handoff. The external node has complete
-functional readiness and a conditional canary permit path. Its base snapshot
-uses `pre-authority`, live native RPC reports a mode-specific stage, and
-MeshMine hardware, integration, and production eligibility remain pending.
-
-## Purpose
-
-The service merges the continuous supervisor and dashboard with the
-authenticated Core assignment/capture stream.
+`meshmine-corelink-operatord` is the supported operator process. It combines the
+authenticated Core assignment/capture stream, durable HandyStratum gateway,
+continuous supervision, local dashboard, graceful shutdown, and optional
+signed public statistics.
 
 ```text
-live-parent-qualified signed bundle
+authoritative node snapshot
+        -> signed Core assignment bundle
         -> authenticated local Core link
-        -> durable operator assignment state
-        -> exact HandyStratum job derivation
-        -> concurrent loopback ASIC sessions
-        -> durable capture spool
-        -> exact Core admission and signed terminal receipt
+        -> durable operator assignment
+        -> HandyStratum job and ASIC sessions
+        -> durable capture
+        -> Core admission and signed terminal receipt
 ```
 
 The operator cannot create parent certificates, assignments, mask sessions,
-block bodies, payout state, or native authority. It can only install an exact
-bundle offered by the pinned Core identity.
+block bodies, payout state, or node authority. It installs only exact bundles
+offered by the pinned Core identity.
 
-## Binary
+## Start
 
-```text
-meshmine-corelink-operatord serve \
-  --config /absolute/operator-corelink-v9.json
+```sh
+meshmine-corelink-operatord serve --config /absolute/operator-corelink.json
 ```
 
-The standalone **ACK-only reconciler** in `meshmine-operatord` remains as a research and
-migration utility. The Core-linked daemon is the integrated path.
+The three state databases for the gateway, Core link, and service journal must
+be different absolute paths. Private key and password files are opened with
+strict ownership and mode checks. `production: true` is rejected.
 
-## Continuous Core supervision
+## Core supervision
 
-The operator maintains one mutually authenticated Unix-domain Core connection.
-Connection failures use bounded exponential backoff:
+The service maintains one mutually authenticated Unix-domain Core connection.
+Failures use bounded exponential backoff. The first offer after reconnect is
+Core's authoritative active bundle; later offers are staged replacements.
+Durable captures remain until a valid terminal receipt returns, so a Core
+disconnect pauses admission without discarding captured work.
 
-```text
-initial delay -> doubled delay -> configured maximum delay
-```
+The deterministic service modes are `bootstrapping`, `mining`, `degraded`,
+`fallback`, `draining`, and `stopped`. Missing current work, expired assignment,
+listener failure, credential failure, Core-link loss, hard capture backlog,
+authorization-failure exhaustion, signed drain, or shutdown causes a
+fail-closed transition.
 
-A successful authenticated connection resets the delay. The first assignment
-offer on every connection is treated as Core's authoritative active bundle and
-is reconciled with durable gateway state. Later offers are staged as pending
-replacement bundles.
+## ASIC listener
 
-The Core link is a critical health signal. After the configured consecutive
-failure threshold, the supervisor closes MeshMine miner sessions and enters
-fallback. Recovery requires separate healthy-sample hysteresis and the minimum
-fallback hold interval.
+Loopback is accepted by default. A physical ASIC on a LAN requires both a
+non-loopback `gateway_listen` and one or more explicit
+`gateway_allowed_cidrs`. Only bounded private, link-local, or loopback networks
+are accepted; broad public exposure is rejected.
 
-## Supervisor safe modes
+Each session receives the current assignment-derived nonce prefix and exact
+bundle-derived job. Assignment or credential rotation closes affected sessions.
+Fallback closes the miner connection so device-configured secondary pool slots
+can take over; it does not claim to reconfigure the ASIC.
 
-The deterministic supervisor exposes:
+## Dashboard
 
-- `bootstrapping`
-- `mining`
-- `degraded`
-- `fallback`
-- `draining`
-- `stopped`
-
-Critical conditions include:
-
-- no current job;
-- a job outside its signed assignment window;
-- unavailable gateway listener;
-- unavailable receipt store;
-- unreadable or insecure credentials;
-- unavailable authenticated Core link;
-- hard capture backlog;
-- process-wide authorization-failure limit;
-- operator shutdown.
-
-A signed assignment drain enters `draining` immediately. When the transition
-completes, the service can recover through the normal healthy-sample policy.
-
-## Gateway behavior
-
-The gateway listener is loopback-only and bounded by configured connection and
-request limits. Slow ASIC sockets do not hold the shared gateway-state lock.
-Each session receives:
-
-- the current durable assignment sequence;
-- an assignment-derived nonce prefix;
-- the exact bundle-derived job;
-- replacement notifications through a separately synchronized writer;
-- connection rotation when the assignment or credential epoch changes.
-
-Fallback does not claim to reconfigure an ASIC remotely. It closes the local
-session so correctly configured secondary or tertiary pool slots can be used.
-Configured fallback endpoints are dashboard expectations and journal evidence,
-not proof of physical device switchover.
-
-## Capture durability
-
-Captures remain in the gateway and operator stores until Core returns a valid
-terminal receipt. A Core disconnect pauses compaction but does not discard work.
-The operator can reconnect, recover the active bundle by assignment sequence,
-and continue idempotent admission.
-
-## Graceful shutdown
-
-SIGINT or SIGTERM handling uses the Tokio signal facility in a dedicated small
-runtime. Shutdown:
-
-1. Activates fallback and rotates local miner sessions.
-2. Stops accepting new local ASIC sessions.
-3. Continues draining already durable captures through an existing Core link.
-4. Uses a bounded 35-second drain deadline.
-5. Records any remaining session count at timeout.
-6. Joins the gateway and dashboard listeners.
-7. Persists the final `stopped` supervisor transition.
-
-Unadmitted captures remain durable after the deadline.
-
-## Dashboard and API
-
-The embedded dashboard remains loopback-only and read-only. It displays:
-
-- supervisor mode and reason;
-- current job and assignment sequence;
-- active ASIC session count;
-- pending captures;
-- Core-link connectivity and last message time;
-- active and pending bundle IDs;
-- assignment-drain state;
-- fallback endpoint expectation;
-- gateway and dashboard listener health;
-- credential health;
-- capture and rejection counters;
-- recent durable events;
-- explicit MeshMine production-eligibility and authority-gate status.
-
-Endpoints:
+The local dashboard must remain on loopback and has no mutation endpoint:
 
 ```text
 GET /
@@ -144,47 +65,39 @@ GET /api/v1/status
 GET /api/v1/health
 ```
 
-There is no HTTP mutation endpoint.
+It reports supervisor state, active assignment, ASIC sessions, capture backlog,
+Core connectivity, listener and credential health, counters, and bounded recent
+events.
 
-## Durable service identity
+## Public statistics
 
-The service database uses:
+The optional public listener is separate from both the ASIC and dashboard
+sockets:
 
 ```text
-schema version: 3
-profile:        meshmine-operator-v9
-binding:        network ID + pinned Core public key
+GET /
+GET /api/v1/pool-stats
 ```
 
-An older service database requires a clean reindex or explicit future migration.
-The Core-link, gateway, and service databases must be separate files.
+It publishes short-lived endpoint-signed snapshots and their opaque HNSA proof
+objects. The signing key is separate from the gateway key. Snapshot sequences
+are reserved in the service database before signing and remain monotonic across
+restart. Feed failure or delegation expiry disables the feed without delaying
+mining. See
+[the pool-statistics profile](../specs/pool-stats-profile.md).
 
-## Event journal
+## Shutdown
 
-The bounded monotonic journal records:
+SIGINT or SIGTERM activates fallback, stops accepting new ASIC sessions,
+attempts a bounded 35-second drain of already durable captures, joins all
+listeners, and records the final stopped transition. Anything not admitted by
+the deadline remains durable for the next start.
 
-- Core-link connection and disconnection;
-- reconnect failures;
-- assignment activation and pending replacement;
-- drain transitions;
-- mode transitions;
-- credential loss and restoration;
-- capture drain summaries;
-- gateway job, rejection, capture, and fallback summaries;
-- shutdown and bounded-drain timeout.
+## Release limits
 
-High-rate gateway events are aggregated per supervisor cycle.
-
-## Current limitations
-
-- `production: true` is rejected.
-- Physical ASIC behavior remains unqualified.
-- Device temperature, power, and board telemetry are not integrated.
-- Core and operator are local single-host processes in this profile.
-- Mask, settlement, overlay, and solved-block supervision are not yet merged
-  into one public release process.
-- The pinned external node may provide native mainnet authority only through
-  its synchronized canary; this service still rejects `production: true` and
-  remains a pre-production MeshMine integration.
-- Rust compiler and runtime qualification remain mandatory in CI and on target
-  ARM64/x86-64 hosts.
+- Physical HS3 and Goldshell behavior is not qualified.
+- The public multi-operator overlay is not yet composed into this service.
+- Device power, temperature, and board telemetry are not integrated.
+- Core and operator use a local single-host transport in this profile.
+- Independent security review and target-platform endurance testing remain
+  required.

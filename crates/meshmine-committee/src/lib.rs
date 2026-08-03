@@ -1,4 +1,4 @@
-//! Research-stage finalized-work committee sortition. The exact sortition is
+//! Test-stage finalized-work committee sortition. The exact sortition is
 //! deliberately release-gated pending protocol review.
 
 use std::collections::{BTreeMap, BTreeSet};

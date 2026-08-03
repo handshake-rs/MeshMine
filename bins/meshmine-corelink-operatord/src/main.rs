@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -10,6 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ed25519_dalek::SigningKey;
+use ipnet::IpNet;
+use k256::ecdsa::SigningKey as Secp256k1SigningKey;
 use meshmine_core_link::{
     ClientError, CoreAssignmentBundleV1, CoreLinkLimits, MAX_CORE_LINK_FRAME_BYTES,
     OperatorCaptureSpool, OperatorCoreLinkClient, TransportError, connect_authenticated,
@@ -17,6 +19,10 @@ use meshmine_core_link::{
 use meshmine_gateway::{
     AuthorizedGatewayJobRequest, DeviceProfile, Gateway, GatewayEvent, HardwareEvidence,
     MAX_GATEWAY_EVENTS, RpcSession, SharedRpcControl, serve_rpc_connection_shared,
+};
+use meshmine_pool_stats::{
+    EXPERIMENTAL_PROFILE_ID, MAX_SNAPSHOT_LIFETIME, PoolStatsDocumentV1, PoolStatsSnapshotV1,
+    PublicMode, public_stats_html,
 };
 use meshmine_service::{
     GatewayStatusView, HealthSample, OperatorCountersView, OperatorSnapshot, ServiceEventJournal,
@@ -32,6 +38,8 @@ const MAX_KEY_BYTES: u64 = 256;
 const MAX_PASSWORD_BYTES: u64 = 1024;
 const MAX_HTTP_REQUEST_LINE: usize = 4096;
 const MAX_HTTP_CONNECTIONS: usize = 64;
+const MAX_PUBLIC_STATS_CONNECTIONS: usize = 128;
+const MAX_HNSA_OBJECT_BYTES: u64 = 1024;
 const MAX_FALLBACK_ENDPOINTS: usize = 16;
 const MAX_FALLBACK_ENDPOINT_BYTES: usize = 1024;
 const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(35);
@@ -50,7 +58,11 @@ struct Config {
     gateway_state: PathBuf,
     service_state: PathBuf,
     gateway_listen: String,
+    #[serde(default)]
+    gateway_allowed_cidrs: Vec<String>,
     dashboard_listen: String,
+    #[serde(default)]
+    public_stats: Option<PublicStatsConfig>,
     password_file: PathBuf,
     username: String,
     profile: String,
@@ -82,6 +94,37 @@ struct Config {
     reconnect_initial_ms: u64,
     #[serde(default = "default_reconnect_maximum_ms")]
     reconnect_maximum_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PublicStatsConfig {
+    listen: String,
+    network_magic: u32,
+    endpoint_signing_key_file: PathBuf,
+    service_authorization_file: PathBuf,
+    endpoint_delegation_file: PathBuf,
+    authorization_id: String,
+    delegation_id: String,
+    endpoint_sequence: u64,
+    delegation_expires_at: u64,
+    #[serde(default = "default_public_stats_lifetime")]
+    snapshot_lifetime_seconds: u64,
+    #[serde(default = "default_public_stats_publish_interval_ms")]
+    publish_interval_ms: u64,
+}
+
+struct PublicStatsPublisher {
+    config: PublicStatsConfig,
+    endpoint_key: Secp256k1SigningKey,
+    service_authorization: Vec<u8>,
+    endpoint_delegation: Vec<u8>,
+    authorization_id: [u8; 32],
+    delegation_id: [u8; 32],
+    operator_id: [u8; 32],
+    sequence_store: Arc<dyn DurableStore>,
+    next_publish_at_ms: u64,
+    disabled: bool,
 }
 
 #[derive(Default)]
@@ -130,11 +173,17 @@ fn run() -> Result<(), Box<dyn Error>> {
 
 fn serve(config: Config) -> Result<(), Box<dyn Error>> {
     let gateway_key = load_signing_key(&config.gateway_signing_key_file)?;
+    let operator_id = gateway_key.verifying_key().to_bytes();
     let core_pubkey = parse_hash(&config.pinned_core_pubkey)?;
     let gateway_store = open_store(&config.gateway_state)?;
     let link_store = open_store(&config.corelink_state)?;
     let service_store = open_store(&config.service_state)?;
     initialize_service_store(&service_store, config.network_id, &core_pubkey)?;
+    let mut public_stats_publisher = config
+        .public_stats
+        .as_ref()
+        .map(|public| load_public_stats_publisher(public, operator_id, service_store.clone()))
+        .transpose()?;
     let journal = ServiceEventJournal::new(service_store.clone(), config.event_capacity)?;
     let mut supervisor = Supervisor::new(
         SupervisorPolicy {
@@ -149,7 +198,7 @@ fn serve(config: Config) -> Result<(), Box<dyn Error>> {
 
     let device_profile = profile(&config.profile)?;
     let gateway = if device_profile.hardware_evidence() == HardwareEvidence::SimulatorOnly {
-        Gateway::open_research_simulator(gateway_store)?
+        Gateway::open_simulator(gateway_store)?
     } else {
         Gateway::open(gateway_store)?
     };
@@ -200,6 +249,7 @@ fn serve(config: Config) -> Result<(), Box<dyn Error>> {
         wall_ms()?,
         active_bundle.as_ref(),
     )));
+    let public_stats_document = Arc::new(RwLock::new(None::<Vec<u8>>));
 
     let listener = spawn_gateway_listener(
         config.clone(),
@@ -218,6 +268,17 @@ fn serve(config: Config) -> Result<(), Box<dyn Error>> {
         shutdown.clone(),
         dashboard_listener_alive.clone(),
     )?;
+    let public_stats_listener = config
+        .public_stats
+        .as_ref()
+        .map(|public| {
+            spawn_public_stats_listener(
+                public.listen.parse()?,
+                public_stats_document.clone(),
+                shutdown.clone(),
+            )
+        })
+        .transpose()?;
 
     journal.append(
         wall_ms()?,
@@ -232,6 +293,12 @@ fn serve(config: Config) -> Result<(), Box<dyn Error>> {
         "operator dashboard listening on {}",
         config.dashboard_listen
     );
+    if let Some(public) = config.public_stats.as_ref() {
+        println!(
+            "public signed pool statistics listening on {}",
+            public.listen
+        );
+    }
 
     let loop_result = service_loop(
         &config,
@@ -252,6 +319,8 @@ fn serve(config: Config) -> Result<(), Box<dyn Error>> {
         &shutdown,
         &mut active_bundle,
         &mut pending_bundle,
+        public_stats_publisher.as_mut(),
+        &public_stats_document,
     );
     shutdown.store(true, Ordering::SeqCst);
     control.request_shutdown();
@@ -274,6 +343,9 @@ fn serve(config: Config) -> Result<(), Box<dyn Error>> {
     }
     join_service_thread(listener, "gateway listener")?;
     join_service_thread(dashboard, "dashboard listener")?;
+    if let Some(listener) = public_stats_listener {
+        join_service_thread(listener, "public statistics listener")?;
+    }
     if let Some(transition) = supervisor.stop(wall_ms()?) {
         journal.append_transition(&transition)?;
     }
@@ -300,6 +372,8 @@ fn service_loop(
     shutdown: &Arc<AtomicBool>,
     active_bundle: &mut Option<CoreAssignmentBundleV1>,
     pending_bundle: &mut Option<CoreAssignmentBundleV1>,
+    mut public_stats_publisher: Option<&mut PublicStatsPublisher>,
+    public_stats_document: &Arc<RwLock<Option<Vec<u8>>>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut client: Option<OperatorCoreLinkClient<'_>> = None;
     let mut reconnect_delay = config.reconnect_initial_ms;
@@ -605,6 +679,23 @@ fn service_loop(
             authority_note: AUTHORITY_NOTE.to_owned(),
             events: recent,
         };
+        if let Some(publisher) = public_stats_publisher.as_deref_mut() {
+            match publisher.publish(&updated, active_bundle.as_ref()) {
+                Ok(Some(document)) => {
+                    *public_stats_document
+                        .write()
+                        .map_err(|_| "public statistics lock poisoned")? = Some(document);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    publisher.disabled = true;
+                    *public_stats_document
+                        .write()
+                        .map_err(|_| "public statistics lock poisoned")? = None;
+                    journal.append(now, "public-stats-disabled", error.to_string())?;
+                }
+            }
+        }
         *snapshot.write().map_err(|_| "snapshot lock poisoned")? = updated;
         if let Some(deadline_ms) = shutdown_deadline_ms
             && (pending_capture_count == 0 || now >= deadline_ms)
@@ -714,6 +805,7 @@ fn spawn_gateway_listener(
     listener_alive: Arc<AtomicBool>,
 ) -> Result<thread::JoinHandle<Result<(), String>>, Box<dyn Error>> {
     let address: SocketAddr = config.gateway_listen.parse()?;
+    let allowed_networks = parse_gateway_allowed_cidrs(&config.gateway_allowed_cidrs)?;
     let listener = TcpListener::bind(address)?;
     listener.set_nonblocking(true)?;
     Ok(thread::spawn(move || {
@@ -722,7 +814,7 @@ fn spawn_gateway_listener(
         while !shutdown.load(Ordering::SeqCst) && !control.shutdown_requested() {
             match listener.accept() {
                 Ok((stream, peer)) => {
-                    if !peer.ip().is_loopback()
+                    if !gateway_peer_allowed(peer.ip(), &allowed_networks)
                         || control.fallback_active()
                         || active_tasks.load(Ordering::SeqCst) >= config.maximum_connections
                     {
@@ -780,6 +872,123 @@ fn spawn_gateway_listener(
         }
         Ok(())
     }))
+}
+
+fn spawn_public_stats_listener(
+    address: SocketAddr,
+    document: Arc<RwLock<Option<Vec<u8>>>>,
+    shutdown: Arc<AtomicBool>,
+) -> Result<thread::JoinHandle<Result<(), String>>, Box<dyn Error>> {
+    let listener = TcpListener::bind(address)?;
+    listener.set_nonblocking(true)?;
+    Ok(thread::spawn(move || {
+        let active = Arc::new(AtomicUsize::new(0));
+        while !shutdown.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    if active.load(Ordering::SeqCst) >= MAX_PUBLIC_STATS_CONNECTIONS {
+                        let _ = stream.shutdown(std::net::Shutdown::Both);
+                        continue;
+                    }
+                    active.fetch_add(1, Ordering::SeqCst);
+                    let active = active.clone();
+                    let document = document.clone();
+                    thread::spawn(move || {
+                        let _guard = TaskGuard(active);
+                        let _ = serve_public_stats_http(stream, document);
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(25));
+                }
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        Ok(())
+    }))
+}
+
+fn serve_public_stats_http(
+    mut stream: TcpStream,
+    document: Arc<RwLock<Option<Vec<u8>>>>,
+) -> Result<(), Box<dyn Error>> {
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut line = String::new();
+    let mut limited = std::io::Read::take(&mut reader, (MAX_HTTP_REQUEST_LINE + 1) as u64);
+    limited.read_line(&mut line)?;
+    if line.len() > MAX_HTTP_REQUEST_LINE {
+        return write_public_http(
+            &mut stream,
+            413,
+            "text/plain; charset=utf-8",
+            b"request too large",
+        );
+    }
+    let mut parts = line.split_whitespace();
+    let method = parts.next().unwrap_or_default();
+    let path = parts.next().unwrap_or_default();
+    if method != "GET" {
+        return write_public_http(
+            &mut stream,
+            405,
+            "text/plain; charset=utf-8",
+            b"method not allowed",
+        );
+    }
+    if path == "/" {
+        return write_public_http(
+            &mut stream,
+            200,
+            "text/html; charset=utf-8",
+            public_stats_html().as_bytes(),
+        );
+    }
+    if path != "/api/v1/pool-stats" {
+        return write_public_http(&mut stream, 404, "text/plain; charset=utf-8", b"not found");
+    }
+    let document = document
+        .read()
+        .map_err(|_| "public statistics lock poisoned")?;
+    match document.as_deref() {
+        Some(body) => write_public_http(&mut stream, 200, "application/json", body),
+        None => write_public_http(
+            &mut stream,
+            503,
+            "text/plain; charset=utf-8",
+            b"statistics unavailable",
+        ),
+    }
+}
+
+fn write_public_http(
+    stream: &mut TcpStream,
+    code: u16,
+    content_type: &str,
+    body: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let reason = match code {
+        200 => "OK",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        413 => "Payload Too Large",
+        503 => "Service Unavailable",
+        _ => "Error",
+    };
+    let content_security_policy = if content_type.starts_with("text/html") {
+        "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'"
+    } else {
+        "default-src 'none'"
+    };
+    write!(
+        stream,
+        "HTTP/1.1 {code} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: {content_security_policy}\r\nConnection: close\r\n\r\n",
+        body.len()
+    )?;
+    stream.write_all(body)?;
+    stream.flush()?;
+    Ok(())
 }
 
 fn spawn_dashboard_listener(
@@ -1006,6 +1215,171 @@ fn initial_snapshot(
     }
 }
 
+impl PublicStatsPublisher {
+    fn publish(
+        &mut self,
+        operator: &OperatorSnapshot,
+        active_bundle: Option<&CoreAssignmentBundleV1>,
+    ) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
+        if self.disabled || operator.generated_at_ms < self.next_publish_at_ms {
+            return Ok(None);
+        }
+        let generated_at = operator.generated_at_ms / 1000;
+        if generated_at >= self.config.delegation_expires_at {
+            return Err("HNSA endpoint delegation expired".into());
+        }
+        let sequence =
+            reserve_public_stats_sequence(self.sequence_store.as_ref(), &self.operator_id)?;
+        self.next_publish_at_ms = operator
+            .generated_at_ms
+            .saturating_add(self.config.publish_interval_ms);
+        let (tip_height, tip_hash) = active_bundle
+            .map(|bundle| {
+                (
+                    bundle.parent_certificate.parent_height,
+                    bundle.parent_certificate.parent_hash,
+                )
+            })
+            .unwrap_or((0, [0; 32]));
+        let mut snapshot = PoolStatsSnapshotV1 {
+            network_magic: self.config.network_magic,
+            profile_id: EXPERIMENTAL_PROFILE_ID,
+            authorization_id: self.authorization_id,
+            delegation_id: self.delegation_id,
+            endpoint_sequence: self.config.endpoint_sequence,
+            sequence,
+            generated_at,
+            expires_at: generated_at
+                .saturating_add(self.config.snapshot_lifetime_seconds)
+                .min(self.config.delegation_expires_at),
+            operator_id: self.operator_id,
+            tip_height,
+            tip_hash,
+            connected_miners: u32::try_from(operator.active_connections)?,
+            connected_mesh_peers: 0,
+            accepted_shares: operator.counters.accepted_captures,
+            rejected_shares: operator.counters.rejected_submissions,
+            pending_captures: u32::try_from(operator.gateway.pending_captures)?,
+            last_found_block: None,
+            mode: public_mode(operator.supervisor.mode),
+            production_eligible: operator.production_eligible,
+            endpoint_signature: Vec::new(),
+        };
+        snapshot.sign(&self.endpoint_key)?;
+        let document = PoolStatsDocumentV1::new(
+            &self.service_authorization,
+            &self.endpoint_delegation,
+            &snapshot,
+        )?;
+        Ok(Some(serde_json::to_vec(&document)?))
+    }
+}
+
+fn public_mode(mode: ServiceMode) -> PublicMode {
+    match mode {
+        ServiceMode::Bootstrapping => PublicMode::Bootstrapping,
+        ServiceMode::Mining => PublicMode::Mining,
+        ServiceMode::Degraded => PublicMode::Degraded,
+        ServiceMode::Fallback => PublicMode::Fallback,
+        ServiceMode::Draining => PublicMode::Draining,
+        ServiceMode::Stopped => PublicMode::Stopped,
+    }
+}
+
+fn load_public_stats_publisher(
+    config: &PublicStatsConfig,
+    operator_id: [u8; 32],
+    sequence_store: Arc<dyn DurableStore>,
+) -> Result<PublicStatsPublisher, Box<dyn Error>> {
+    let endpoint_key = load_secp256k1_signing_key(&config.endpoint_signing_key_file)?;
+    let service_authorization = read_hex_file(
+        &config.service_authorization_file,
+        MAX_HNSA_OBJECT_BYTES,
+        "HNSA service authorization",
+    )?;
+    let endpoint_delegation = read_hex_file(
+        &config.endpoint_delegation_file,
+        MAX_HNSA_OBJECT_BYTES,
+        "HNSA endpoint delegation",
+    )?;
+    Ok(PublicStatsPublisher {
+        config: config.clone(),
+        endpoint_key,
+        service_authorization,
+        endpoint_delegation,
+        authorization_id: parse_hash(&config.authorization_id)?,
+        delegation_id: parse_hash(&config.delegation_id)?,
+        operator_id,
+        sequence_store,
+        next_publish_at_ms: 0,
+        disabled: false,
+    })
+}
+
+fn reserve_public_stats_sequence(
+    store: &dyn DurableStore,
+    operator_id: &[u8; 32],
+) -> Result<u64, Box<dyn Error>> {
+    const NAMESPACE: &str = "pool-stats-sequence/v1";
+    let key = hex::encode(operator_id);
+    loop {
+        let current = store.get(NAMESPACE, &key)?;
+        let previous = match current.as_deref() {
+            None => 0,
+            Some(bytes) => u64::from_le_bytes(
+                bytes
+                    .try_into()
+                    .map_err(|_| "invalid durable public-statistics sequence")?,
+            ),
+        };
+        let next = previous
+            .checked_add(1)
+            .ok_or("public statistics sequence exhausted")?;
+        if store.compare_and_swap(NAMESPACE, &key, current.as_deref(), &next.to_le_bytes())? {
+            return Ok(next);
+        }
+    }
+}
+
+fn parse_gateway_allowed_cidrs(values: &[String]) -> Result<Vec<IpNet>, Box<dyn Error>> {
+    if values.len() > 16 {
+        return Err("too many gateway CIDR allowlist entries".into());
+    }
+    values
+        .iter()
+        .map(|value| {
+            let network: IpNet = value.parse()?;
+            let trusted = match network {
+                IpNet::V4(network) => {
+                    network.prefix_len() >= 8
+                        && (network.network().is_private()
+                            || network.network().is_link_local()
+                            || network.network().is_loopback())
+                }
+                IpNet::V6(network) => {
+                    network.prefix_len() >= 16
+                        && (network.network().is_unique_local()
+                            || network.network().is_unicast_link_local()
+                            || network.network().is_loopback())
+                }
+            };
+            if !trusted {
+                return Err(
+                    format!("gateway CIDR is not a bounded private network: {network}").into(),
+                );
+            }
+            Ok(network)
+        })
+        .collect()
+}
+
+fn gateway_peer_allowed(peer: IpAddr, allowed_networks: &[IpNet]) -> bool {
+    peer.is_loopback()
+        || allowed_networks
+            .iter()
+            .any(|network| network.contains(&peer))
+}
+
 fn validate_config(config: &Config) -> Result<(), Box<dyn Error>> {
     if config.schema_version != 2 || config.production {
         return Err("unified operator requires schema 2 and production=false".into());
@@ -1026,10 +1400,49 @@ fn validate_config(config: &Config) -> Result<(), Box<dyn Error>> {
     {
         return Err("Core-link, gateway, and service state must be separate files".into());
     }
-    for address in [&config.gateway_listen, &config.dashboard_listen] {
-        let address: SocketAddr = address.parse()?;
-        if !address.ip().is_loopback() {
-            return Err("operator listeners must use loopback".into());
+    let gateway_address: SocketAddr = config.gateway_listen.parse()?;
+    let dashboard_address: SocketAddr = config.dashboard_listen.parse()?;
+    let allowed_networks = parse_gateway_allowed_cidrs(&config.gateway_allowed_cidrs)?;
+    if !gateway_address.ip().is_loopback() && allowed_networks.is_empty() {
+        return Err("non-loopback ASIC gateway requires a private CIDR allowlist".into());
+    }
+    if !dashboard_address.ip().is_loopback() {
+        return Err("operator dashboard must use loopback".into());
+    }
+    if let Some(public) = config.public_stats.as_ref() {
+        let public_address: SocketAddr = public.listen.parse()?;
+        if public_address == gateway_address || public_address == dashboard_address {
+            return Err("public statistics listener must use a distinct socket".into());
+        }
+        for (path, name) in [
+            (
+                &public.endpoint_signing_key_file,
+                "HNSA endpoint signing key",
+            ),
+            (
+                &public.service_authorization_file,
+                "HNSA service authorization",
+            ),
+            (&public.endpoint_delegation_file, "HNSA endpoint delegation"),
+        ] {
+            validate_absolute(path, name)?;
+        }
+        if public.endpoint_signing_key_file == config.gateway_signing_key_file {
+            return Err("HNSA endpoint key must be separate from the ASIC gateway key".into());
+        }
+        let authorization_id = parse_hash(&public.authorization_id)?;
+        let delegation_id = parse_hash(&public.delegation_id)?;
+        let now = wall_ms()? / 1000;
+        if is_zero_hash(&authorization_id)
+            || is_zero_hash(&delegation_id)
+            || public.endpoint_sequence == 0
+            || public.snapshot_lifetime_seconds < 10
+            || public.snapshot_lifetime_seconds > MAX_SNAPSHOT_LIFETIME
+            || public.publish_interval_ms < 1_000
+            || public.publish_interval_ms > public.snapshot_lifetime_seconds.saturating_mul(500)
+            || public.delegation_expires_at <= now.saturating_add(public.snapshot_lifetime_seconds)
+        {
+            return Err("invalid bounded public-statistics configuration".into());
         }
     }
     if config.username.is_empty()
@@ -1101,6 +1514,25 @@ fn load_signing_key(path: &Path) -> Result<SigningKey, Box<dyn Error>> {
     Ok(SigningKey::from_bytes(&key))
 }
 
+fn load_secp256k1_signing_key(path: &Path) -> Result<Secp256k1SigningKey, Box<dyn Error>> {
+    let bytes = read_secure_file(path, MAX_KEY_BYTES, true, "HNSA endpoint signing key")?;
+    let decoded = hex::decode(String::from_utf8(bytes)?.trim())?;
+    let key: [u8; 32] = decoded
+        .try_into()
+        .map_err(|_| "HNSA endpoint key must be 32 bytes")?;
+    Secp256k1SigningKey::from_bytes((&key).into())
+        .map_err(|_| "invalid HNSA endpoint signing key".into())
+}
+
+fn read_hex_file(path: &Path, maximum: u64, name: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let encoded = String::from_utf8(read_secure_file(path, maximum, false, name)?)?;
+    let decoded = hex::decode(encoded.trim())?;
+    if decoded.is_empty() || decoded.len() as u64 > maximum {
+        return Err(format!("{name} has invalid decoded size").into());
+    }
+    Ok(decoded)
+}
+
 fn read_password(path: &Path) -> Result<String, Box<dyn Error>> {
     let bytes = read_secure_file(path, MAX_PASSWORD_BYTES, true, "password file")?;
     let password = String::from_utf8(bytes)?
@@ -1153,6 +1585,10 @@ fn parse_hash(value: &str) -> Result<[u8; 32], Box<dyn Error>> {
     Ok(hex::decode(value)?
         .try_into()
         .map_err(|_| "expected 32-byte hex")?)
+}
+
+fn is_zero_hash(value: &[u8; 32]) -> bool {
+    value.iter().all(|byte| *byte == 0)
 }
 
 fn validate_absolute(path: &Path, name: &str) -> Result<(), Box<dyn Error>> {
@@ -1233,8 +1669,46 @@ const fn default_reconnect_initial_ms() -> u64 {
 const fn default_reconnect_maximum_ms() -> u64 {
     30_000
 }
+const fn default_public_stats_lifetime() -> u64 {
+    60
+}
+const fn default_public_stats_publish_interval_ms() -> u64 {
+    2_000
+}
 
 fn usage() -> String {
     "usage: meshmine-corelink-operatord serve --config /absolute/operator-corelink-v9.json"
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use meshmine_storage::MemoryStore;
+
+    #[test]
+    fn public_statistics_sequence_is_durable_and_operator_scoped() {
+        let store = MemoryStore::default();
+        assert_eq!(
+            reserve_public_stats_sequence(&store, &[1; 32]).expect("first sequence"),
+            1
+        );
+        assert_eq!(
+            reserve_public_stats_sequence(&store, &[1; 32]).expect("second sequence"),
+            2
+        );
+        assert_eq!(
+            reserve_public_stats_sequence(&store, &[2; 32]).expect("other operator"),
+            1
+        );
+    }
+
+    #[test]
+    fn malformed_public_statistics_sequence_fails_closed() {
+        let store = MemoryStore::default();
+        store
+            .put("pool-stats-sequence/v1", &hex::encode([1; 32]), &[0; 7])
+            .expect("malformed sequence fixture");
+        assert!(reserve_public_stats_sequence(&store, &[1; 32]).is_err());
+    }
 }

@@ -34,12 +34,14 @@ const CORE_V2: u16 = 2;
 const AUTH_STREAM: u8 = 0;
 const GOSSIP_STREAM: u8 = 1;
 const REQUEST_STREAM: u8 = 2;
+const HNSR_STREAM: u8 = 3;
 const STATUS_OK: u8 = 0;
 const STATUS_NOT_FOUND: u8 = 1;
 const STATUS_REJECTED: u8 = 2;
 const STATUS_QUOTA: u8 = 3;
 const MAX_HELLO_BYTES: usize = 512;
 const MAX_STATUS_BYTES: usize = 64;
+const MAX_HNSR_PACKET_BYTES: usize = 65_535;
 const MAX_TRUSTED_SERVER_CERTIFICATES: usize = 8;
 
 #[derive(Clone)]
@@ -104,6 +106,22 @@ pub trait OverlayApplication: Send + Sync + 'static {
     /// Fetch a bounded response for a request/response stream. Body packages
     /// and shards are deliberately unavailable through gossip.
     fn load_response(&self, request: &OverlayRequest) -> Option<Vec<u8>>;
+
+    /// Process one canonical HNSR packet from an authenticated overlay peer.
+    ///
+    /// HNSR owns its own signatures, profile allowlists, admission quotas, and
+    /// route limits. The QUIC transport supplies only bounded delivery and the
+    /// authenticated peer identity used as the HNSR source key.
+    fn handle_hnsr(&self, _peer: [u8; 32], _packet: &[u8]) -> HnsrApplicationResponse {
+        HnsrApplicationResponse::Reject
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HnsrApplicationResponse {
+    Response(Vec<u8>),
+    NoResponse,
+    Reject,
 }
 
 pub struct QuicOverlayServer<A: OverlayApplication> {
@@ -525,6 +543,24 @@ impl QuicOverlayPeer {
         decode_data_status(&response, self.limits.maximum_response_bytes)
     }
 
+    /// Exchange one bounded HNSR packet over the authenticated operator link.
+    pub async fn hnsr(&self, packet: &[u8]) -> Result<Option<Vec<u8>>, TransportError> {
+        if packet.is_empty() || packet.len() > MAX_HNSR_PACKET_BYTES {
+            return Err(TransportError::MalformedFrame(
+                "invalid bounded HNSR packet".to_owned(),
+            ));
+        }
+        let response = exchange(
+            &self.connection,
+            HNSR_STREAM,
+            packet,
+            MAX_HNSR_PACKET_BYTES.saturating_add(16),
+        )
+        .await?;
+        Ok(decode_data_status(&response, MAX_HNSR_PACKET_BYTES)?
+            .filter(|response| !response.is_empty()))
+    }
+
     pub async fn close(self) {
         self.shutdown().await;
     }
@@ -749,6 +785,10 @@ async fn handle_stream<A: OverlayApplication>(
             )
             .await
         }
+        HNSR_STREAM => {
+            let bytes = read_frame(&mut recv, MAX_HNSR_PACKET_BYTES).await?;
+            handle_hnsr(peer, bytes, admission.clone(), application, callback_gates).await
+        }
         _ => Err(TransportError::MalformedFrame(
             "unknown stream kind".to_owned(),
         )),
@@ -769,6 +809,56 @@ async fn handle_stream<A: OverlayApplication>(
         connection.close(VarInt::from_u32(1), b"peer score exhausted");
     }
     Ok(())
+}
+
+async fn handle_hnsr<A: OverlayApplication>(
+    peer: [u8; 32],
+    bytes: Vec<u8>,
+    admission: Arc<Mutex<OverlayNode>>,
+    application: Arc<A>,
+    callback_gates: CallbackGates,
+) -> Result<Vec<u8>, TransportError> {
+    if bytes.is_empty() || bytes.len() > MAX_HNSR_PACKET_BYTES {
+        return Err(TransportError::MalformedFrame(
+            "invalid bounded HNSR packet".to_owned(),
+        ));
+    }
+    let permit = callback_gates
+        .gate(ProtocolLane::Availability)
+        .acquire_owned()
+        .await
+        .map_err(|_| TransportError::Worker("application callback gate closed".to_owned()))?;
+    let response = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        catch_unwind(AssertUnwindSafe(|| application.handle_hnsr(peer, &bytes)))
+            .map_err(|_| TransportError::Worker("HNSR application callback panicked".to_owned()))
+    })
+    .await
+    .map_err(|error| TransportError::Worker(error.to_string()))??;
+    let response = match response {
+        HnsrApplicationResponse::Response(response) => response,
+        HnsrApplicationResponse::NoResponse => Vec::new(),
+        HnsrApplicationResponse::Reject => return Err(TransportError::RemoteRejected),
+    };
+    if response.len() > MAX_HNSR_PACKET_BYTES {
+        return Err(TransportError::MalformedFrame(
+            "HNSR application response exceeds protocol bound".to_owned(),
+        ));
+    }
+    // HNSR responses share the existing authenticated-peer download budget,
+    // independently of the stricter quotas enforced by the HNSR service.
+    admission
+        .lock()
+        .map_err(|_| TransportError::Poisoned)?
+        .request_body_bytes(&peer, response.len() as u64, now_ms())
+        .map_err(|error| match error {
+            NetworkError::BodyQuota => TransportError::RemoteQuota,
+            other => admission_error(other),
+        })?;
+    let mut encoded = Encoder::new();
+    encoded.u8(STATUS_OK);
+    encoded.bytes(&response);
+    Ok(encoded.into_bytes())
 }
 
 async fn handle_gossip<A: OverlayApplication>(
@@ -1364,6 +1454,14 @@ mod tests {
                 ))
                 .cloned()
         }
+
+        fn handle_hnsr(&self, _peer: [u8; 32], packet: &[u8]) -> HnsrApplicationResponse {
+            if packet == b"h" {
+                HnsrApplicationResponse::Response(b"r".to_vec())
+            } else {
+                HnsrApplicationResponse::Reject
+            }
+        }
     }
 
     fn certificate() -> (Vec<u8>, Vec<u8>) {
@@ -1721,6 +1819,11 @@ mod tests {
             admission.lock().unwrap().peer_identities(&client_pubkey),
             Some((client_pubkey, Some(client_economic)))
         );
+        assert_eq!(peer.hnsr(b"h").await.unwrap(), Some(b"r".to_vec()));
+        assert!(matches!(
+            peer.hnsr(b"invalid").await,
+            Err(TransportError::RemoteRejected)
+        ));
 
         let payload = b"canonical-parent-certificate".to_vec();
         let object_id = domain_hash("meshmine/test-quic-object/v2", &payload);

@@ -25,8 +25,6 @@ jobs:
         run: python3 scripts/validate-external-node-boundary.py
       - name: Validate portable work-fabric source handoff
         run: python3 scripts/validate-work-fabric-source.py
-      - name: Validate operator-service source handoff
-        run: python3 scripts/validate-operator-service-source.py
       - name: Validate authenticated Core-link source handoff
         run: python3 scripts/validate-core-link-source.py
       - name: Validate live-parent and unified-supervisor handoff

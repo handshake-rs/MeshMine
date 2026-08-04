@@ -477,6 +477,11 @@ impl Publisher {
             random_nonzero::<16>(),
         )?;
         let offer = exchange_hnsr(peer, &reserve).await?;
+        // The relay stamps the offer when it handles the network request. Use
+        // a fresh, monotonic local observation when verifying that ticket so
+        // crossing a Unix-second boundary cannot make a valid offer appear to
+        // come from the future.
+        let now = now.max(now_seconds()?);
         let (confirmation, ticket) = endpoint.confirm_offer(&offer, relay_key, now, true)?;
         let confirmed = exchange_hnsr(peer, &confirmation).await?;
         let ticket = endpoint.accept_confirmation(&confirmed, ticket)?;

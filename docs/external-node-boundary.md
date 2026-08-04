@@ -6,7 +6,7 @@ workspace. `meshmine-hsrd-bridge` consumes `hns-consensus`, `hns-mining`,
 manifest and `Cargo.lock`. The current pin is:
 
 ```text
-77208649d255ffcffc37d788107de8cad23a480f
+8bbcd61d96293ca5d895fe60845f180a94e5c38e
 ```
 
 MeshMine contains no embedded full node, node fallback, JavaScript consensus

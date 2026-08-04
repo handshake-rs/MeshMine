@@ -914,7 +914,7 @@ dependencies = [
 [[package]]
 name = "hns-chain"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-primitives 0.3.5",
  "hns-store",
@@ -939,7 +939,7 @@ dependencies = [
 [[package]]
 name = "hns-consensus"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-goosig",
  "hns-primitives 0.3.5",
@@ -964,7 +964,7 @@ dependencies = [
 [[package]]
 name = "hns-denuo-market-relay"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-primitives 0.3.5",
  "thiserror",
@@ -990,7 +990,7 @@ dependencies = [
 [[package]]
 name = "hns-goosig"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "cc",
  "thiserror",
@@ -1015,7 +1015,7 @@ dependencies = [
 [[package]]
 name = "hns-mempool"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-consensus",
  "hns-primitives 0.3.5",
@@ -1027,7 +1027,7 @@ dependencies = [
 [[package]]
 name = "hns-mining"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-consensus",
  "hns-mempool",
@@ -1039,7 +1039,7 @@ dependencies = [
 [[package]]
 name = "hns-node"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "anyhow",
  "axum",
@@ -1087,7 +1087,7 @@ dependencies = [
 [[package]]
 name = "hns-p2p"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "chacha20poly1305",
  "hns-consensus",
@@ -1129,7 +1129,7 @@ dependencies = [
 [[package]]
 name = "hns-primitives"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "blake2",
  "serde",
@@ -1140,7 +1140,7 @@ dependencies = [
 [[package]]
 name = "hns-rpc"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-chain",
  "hns-mempool",
@@ -1153,7 +1153,7 @@ dependencies = [
 [[package]]
 name = "hns-secp256k1"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "cc",
  "thiserror",
@@ -1174,7 +1174,7 @@ dependencies = [
 [[package]]
 name = "hns-state"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-chain",
  "hns-consensus",
@@ -1188,7 +1188,7 @@ dependencies = [
 [[package]]
 name = "hns-store"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "fs4",
  "hns-primitives 0.3.5",
@@ -1199,7 +1199,7 @@ dependencies = [
 [[package]]
 name = "hns-sync"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-chain",
  "hns-p2p",
@@ -1225,7 +1225,7 @@ dependencies = [
 [[package]]
 name = "hns-urkel"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-primitives 0.3.5",
  "serde",
@@ -1235,7 +1235,7 @@ dependencies = [
 [[package]]
 name = "hns-wallet-index"
 version = "0.3.5"
-source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=77208649d255ffcffc37d788107de8cad23a480f#77208649d255ffcffc37d788107de8cad23a480f"
+source = "git+https://github.com/handshake-rs/hns-node-rs.git?rev=8bbcd61d96293ca5d895fe60845f180a94e5c38e#8bbcd61d96293ca5d895fe60845f180a94e5c38e"
 dependencies = [
  "hns-primitives 0.3.5",
  "hns-secp256k1",

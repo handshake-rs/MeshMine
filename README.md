@@ -91,9 +91,9 @@ When `public_stats` is configured, the operator exposes:
 The HTML page labels its decoded values as unverified because JavaScript served
 by the operator is not an independent trust root. The browser extension and
 mobile native host must validate HNSA and the snapshot signature before showing
-the data as verified. Publishing and pinning the new `handshake-rs`
-`hns-service-authority` crate is the remaining integration dependency for those
-clients.
+the data as verified. MeshMine now pins the committed `handshake-rs`
+`hns-service-authority` source exactly; independent browser/mobile integration
+qualification remains a release gate for verified client presentation.
 
 The public publisher uses a separate secp256k1 endpoint key, short-lived
 snapshots, bounded request handling, no cookies, no persistent browser state,

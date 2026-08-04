@@ -11,7 +11,8 @@ The daemon composes:
 - durable, signed `OperatorRecordV2` admission with strictly increasing
   per-operator sequences;
 - the live HNSR relay reservation and rendezvous route service pinned from
-  `handshake-rs/hns-rs`;
+  `handshake-rs/hns-rs` at
+  `29e4b473bd2cfee460b56d5092b7bc28da5ec5dc`;
 - profile allowlists and independent relay, route-store, peer-download, and
   transport limits; and
 - optional `pool-stats` reservation, publication, and verified read-back

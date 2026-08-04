@@ -8,10 +8,10 @@ publish.workspace = true
 description = "Exact standalone hns-node-rs-to-MeshMine mining authorization bridge"
 
 [dependencies]
-hns-consensus = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "3d346e3dadc716b5c367eee050308e71a0693a64" }
-hns-mining = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "3d346e3dadc716b5c367eee050308e71a0693a64" }
-hns-node = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "3d346e3dadc716b5c367eee050308e71a0693a64", default-features = false }
-hns-primitives = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "3d346e3dadc716b5c367eee050308e71a0693a64" }
+hns-consensus = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "77208649d255ffcffc37d788107de8cad23a480f" }
+hns-mining = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "77208649d255ffcffc37d788107de8cad23a480f" }
+hns-node = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "77208649d255ffcffc37d788107de8cad23a480f", default-features = false }
+hns-primitives = { git = "https://github.com/handshake-rs/hns-node-rs.git", rev = "77208649d255ffcffc37d788107de8cad23a480f" }
 meshmine-gateway = { path = "../meshmine-gateway" }
 meshmine-fast-path = { path = "../meshmine-fast-path" }
 meshmine-hns = { path = "../meshmine-hns" }

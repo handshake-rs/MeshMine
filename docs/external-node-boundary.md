@@ -6,7 +6,7 @@ workspace. `meshmine-hsrd-bridge` consumes `hns-consensus`, `hns-mining`,
 manifest and `Cargo.lock`. The current pin is:
 
 ```text
-3d346e3dadc716b5c367eee050308e71a0693a64
+77208649d255ffcffc37d788107de8cad23a480f
 ```
 
 MeshMine contains no embedded full node, node fallback, JavaScript consensus
@@ -55,8 +55,10 @@ share throughput, and invalidation time.
 The companion `handshake-rs` workspace contains the draft HNSA implementation
 for HIP pull request 79 and the local version-2 HNSA/HNSR named-route adapter.
 Service identity, authorization, endpoint delegation, route validation, and
-rendezvous wire behavior remain there. MeshMine owns only its `pool-stats`
-profile-specific snapshot and application policy.
+rendezvous wire behavior remain there. The HNSR/operator dependencies are
+locked to `handshake-rs/hns-rs` revision
+`29e4b473bd2cfee460b56d5092b7bc28da5ec5dc`. MeshMine owns only its
+`pool-stats` profile-specific snapshot and application policy.
 
 HIP pull request 78 remains limited to unnamed-node rendezvous in its submitted
 upstream scope. The local companion HIP preserves that route format and adds a

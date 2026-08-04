@@ -1,4 +1,5 @@
 /target/
+/dist/
 /hsrd/target/
 /hsrd/fuzz/target/
 /hsrd/fuzz/corpus/

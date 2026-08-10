@@ -193,6 +193,7 @@ async fn serve(config: Config) -> Result<(), BoxError> {
             total_records: config.rendezvous.total_records,
             records_per_key: config.rendezvous.records_per_key,
             records_per_source: config.rendezvous.records_per_source,
+            ..RouteStoreLimits::default()
         },
     )?;
     let application = Arc::new(OperatorApplication {
@@ -953,6 +954,7 @@ mod tests {
                 total_records: 32,
                 records_per_key: 4,
                 records_per_source: 8,
+                ..RouteStoreLimits::default()
             },
         )
         .unwrap();

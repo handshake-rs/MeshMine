@@ -15,7 +15,7 @@ FULL_REVISION = re.compile(r"[0-9a-f]{40}")
 SOURCES = {
     "hns-node-rs": {
         "url": "https://github.com/handshake-rs/hns-node-rs.git",
-        "revision": "9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b",
+        "revision": "2712d1dbb74934038188637dccf27d58fbc39a48",
         "manifest": ROOT / "crates" / "meshmine-hsrd-bridge" / "Cargo.toml",
         "direct": {"hns-consensus", "hns-mining", "hns-node", "hns-primitives"},
     },

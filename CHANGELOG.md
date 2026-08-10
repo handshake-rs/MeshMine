@@ -6,8 +6,12 @@ not published a tagged release.
 ## Unreleased
 
 - Pin the external `hns-node-rs` authority to
-  `9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b` and the HNSA/HNSR protocol source
+  `2712d1dbb74934038188637dccf27d58fbc39a48` and the HNSA/HNSR protocol source
   to `b24b66c382de53330ec21dd3137e056a2bea3e2d`.
+- Advance the node boundary through the bounded legacy name-tree accumulator
+  reconciliation and additive atomic wallet-chain snapshot after confirming
+  the MeshMine bridge APIs are unchanged and the exact upstream CI, RustSec,
+  and CodeQL gates are green.
 - Add an executable check that rejects mixed, mutable, or local substitutions
   for either release-sensitive Git source.
 - Add a release-metadata check that keeps all private workspace packages,

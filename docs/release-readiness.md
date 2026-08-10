@@ -34,7 +34,7 @@ released.
 
 | Input | Exact source | Role |
 |---|---|---|
-| `hns-node-rs` | `9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b` | sole Rust node, mining, and Handshake authority boundary |
+| `hns-node-rs` | `2712d1dbb74934038188637dccf27d58fbc39a48` | sole Rust node, mining, and Handshake authority boundary |
 | `hns-rs` | `b24b66c382de53330ec21dd3137e056a2bea3e2d` | draft HNSA service authority and HNSR protocol adapter |
 
 The manifests and complete lock graph must agree on those commits. Repository
@@ -48,6 +48,46 @@ its release gates.
 members inherit one private version, license, edition, and Rust requirement and
 that the lockfile uses that same identity. Keep both checks green when the
 eventual version is selected.
+
+### Node advancement decision and evidence
+
+The previous node pin was
+`9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b`. The complete reviewed delta to
+`2712d1dbb74934038188637dccf27d58fbc39a48` contains:
+
+- `d73c0894564503ad04d6783e831a311603ae302f`, which repairs the strictly
+  validated subset of legacy name-tree interval accumulators affected by
+  ordinary BID/REDEEM undo touches before node startup admits writers or a
+  checkpoint fast path;
+- `2b267ffe7fc6f9929063a18986a83b566d02ae6d`, which adds the script-free
+  `WalletChainSnapshot` and `get_chain_snapshot` wallet API without changing
+  the wallet RPC API version; and
+- two documentation-only commits ending at the selected revision.
+
+There are no changes in `hns-consensus`, `hns-mining`, or `hns-primitives`, no
+Cargo manifest or lock-graph changes, and no removal or signature change in the
+`NodeService` surface consumed by `meshmine-hsrd-bridge`. The only new public
+node API in this range is the additive wallet snapshot. The selected source is
+therefore API-compatible with the bridge while including the startup state
+repair. The code and manifests at `2b267ffe7fc6f9929063a18986a83b566d02ae6d`
+and the selected documentation head are identical.
+
+Exact upstream evidence for the selected node revision:
+
+- [hns-node-rs CI run 31426205228](https://github.com/handshake-rs/hns-node-rs/actions/runs/31426205228)
+  completed successfully, including the full locked node/fuzz qualification and
+  RustSec jobs; and
+- [hns-node-rs CodeQL run 31426200536](https://github.com/handshake-rs/hns-node-rs/actions/runs/31426200536)
+  completed successfully for Rust and Actions.
+
+The most recent MeshMine evidence before this dependency and packaging change
+is [CI run 31406917807](https://github.com/handshake-rs/MeshMine/actions/runs/31406917807)
+and [CodeQL run 31406911750](https://github.com/handshake-rs/MeshMine/actions/runs/31406911750),
+both successful at exact commit
+`ad0958e0234075470e5b03ba726e3c9dc9b7f865`. Those runs establish the prior
+baseline only. They do not qualify the repin or private candidate workflow;
+the resulting MeshMine commit still requires its own green CI, RustSec, and
+CodeQL evidence after it is pushed.
 
 ## Private candidate boundary
 

@@ -17,7 +17,7 @@ number or create Handshake consensus rules.
 
 An independently trusted HNSA client validates the root-signed service
 authorization and service-signed endpoint delegation using the implementation
-in `handshake-rs`. The client then passes the validated network, profile,
+in `handshake-rs/hns-rs`. The client then passes the validated network, profile,
 authorization ID, delegation ID, endpoint sequence, endpoint public key, and
 delegation expiry into the MeshMine profile verifier.
 

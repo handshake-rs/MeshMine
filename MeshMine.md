@@ -28,7 +28,10 @@ MeshMine Core v2 is built around five decisions:
 4. **Each MeshMine block pays a fixed number of probabilistically selected PPLNS work and service tickets directly in an ordinary HNS coinbase transaction.** Transaction and claim/airdrop fees remain with the independent template operator unless a later profile explicitly changes that rule.
 5. **ASIC search is divided into committed assignments with auditable job issuance and worker telemetry.** Core v2 does not claim that stock ASICs cryptographically prove exhaustive nonce-range traversal.
 
-MeshMine Core v2 does **not** require a Handshake hard fork. Every network block produced by MeshMine must be accepted by an unmodified `hns-node-rs` full node.
+MeshMine Core v2 does **not** require a Handshake hard fork. Every network block
+produced by MeshMine must be accepted by the pinned live `hns-node-rs`
+authority and independently by an ordinary, unmodified canonical `hsd` full
+node during qualification.
 
 The initial project goal is narrower than defeating an attacker that physically owns most HNS ASICs. No voluntary overlay can make genuine majority ownership harmless. MeshMine is intended to remove avoidable coordinator concentration:
 
@@ -44,10 +47,13 @@ The implementation must keep two validity domains separate:
 
 ```text
 Handshake-valid:
-    Accepted by an ordinary, unmodified hns-node-rs full node.
+    Accepted by an ordinary, unmodified canonical hsd full node.
+
+Runtime-submittable:
+    Handshake-valid and accepted by the pinned live hns-node-rs authority.
 
 MeshMine-valid:
-    Handshake-valid and compliant with MM-0001 overlay rules.
+    Runtime-submittable and compliant with MM-0001 overlay rules.
 
 A block may be Handshake-valid and MeshMine-invalid.
 Such a block remains a valid HNS block; it simply receives no
@@ -105,7 +111,12 @@ A production implementation MUST NOT claim a stronger property than the relevant
 
 ## 2. Handshake primitives that constrain the design
 
-Codex MUST treat `hns-node-rs` as the byte-level and contextual-validity oracle. Bitcoin serialization or mining assumptions MUST NOT be imported where Handshake differs.
+MeshMine MUST treat the pinned `hns-node-rs` implementation as its live
+byte-level and contextual-validity authority. Canonical JavaScript `hsd`
+fixtures and qualification nodes remain the independent offline oracle for
+network compatibility only; they are never a runtime fallback. Bitcoin
+serialization or mining assumptions MUST NOT be imported where Handshake
+differs.
 
 ### 2.1 Consensus header
 
@@ -129,7 +140,8 @@ The miner-oriented serialization is 256 bytes. It contains a 128-byte preheader 
 
 ### 2.2 Exact HNS proof-of-work construction
 
-The implementation MUST reproduce the current `hns-node-rs` operations byte-for-byte:
+The implementation MUST reproduce the pinned `hns-node-rs` operations
+byte-for-byte and remain compatible with the canonical `hsd` vectors:
 
 ```text
 subheader =
@@ -167,7 +179,8 @@ powHash = shareHash XOR mask
 
 ### 2.3 Miner serialization
 
-The miner representation MUST match `AbstractBlock.toMiner()` exactly:
+The miner representation MUST match the native `hns-node-rs` encoding and the
+canonical `hsd` `AbstractBlock.toMiner()` representation exactly:
 
 ```text
 nonce
@@ -203,9 +216,17 @@ Any additional MeshMine commitments are carried in otherwise valid coinbase witn
 
 ### 2.5 Contextual validation without proof of work
 
-Before a body package can receive a MeshMine availability certificate, it MUST be validated by an unmodified or minimally wrapped `hns-node-rs` contextual validator with proof-of-work checking disabled. The preferred oracle is the same path used by `chain.verifyBlock(block)` with `VERIFY_POW` removed.
+Before a body package can receive a MeshMine availability certificate, it MUST
+be validated through the pinned `hns-node-rs` contextual path with its explicit
+proof-of-work requirement disabled. The analogous JavaScript
+`chain.verifyBlock(block)` path with `VERIFY_POW` removed belongs only to the
+offline canonical-`hsd` differential corpus; it is not a runtime authority or
+fallback.
 
-A separate reimplementation of HNS covenant, claim, airdrop, name-tree, fee, sigops, and contextual validation is not sufficient for certification until it has been differentially tested against `hns-node-rs`.
+A separate reimplementation of HNS covenant, claim, airdrop, name-tree, fee,
+sigops, and contextual validation is not sufficient for certification until it
+has been differentially tested against the pinned `hns-node-rs` implementation
+and the independent canonical `hsd` corpus.
 
 ---
 
@@ -284,8 +305,8 @@ No implementation may infer that one `n/t` pair has identical security for signa
 | local HNS ASIC |<------>| local MeshMine node |
 +----------------+        +---------------------+
         ^                         ^       ^
-        | local superseded/native     |       |
-        | gateway protocol        |       +--> local hns-node-rs
+        | local HandyStratum       |       |
+        | gateway protocol        |       +--> local hns-node-rs (`hsrd`)
         |                         |
         |                         +--> MeshMine overlay
         |                                 |
@@ -2186,9 +2207,12 @@ A block explorer SHOULD distinguish “MeshMine produced this block” from “o
 Recommended architecture:
 
 ```text
-External handshake-rs/hns-node-rs workspace:
+External `handshake-rs/hns-node-rs` workspace:
     Handshake consensus, active-chain authority, mining templates,
-    candidate validation, and HNSA/HNSR protocol implementation.
+    and candidate validation.
+
+External `handshake-rs/hns-rs` workspace:
+    HNSA service authority and HNSR protocol implementation.
 
 MeshMine Rust workspace:
     overlay types, networking, storage, share validation, payout math,
@@ -2265,7 +2289,9 @@ HNS-MeshMine/
 - Every network object is versioned.
 - Every certificate verifies signer eligibility for that exact role and epoch.
 - Every write path has crash-recovery tests.
-- HNS-sensitive authority remains in pinned external `handshake-rs` crates.
+- HNS consensus authority remains in pinned external
+  `handshake-rs/hns-node-rs` crates; HNSA/HNSR semantics remain in pinned
+  `handshake-rs/hns-rs` crates.
 - Repeated share validation must not add per-share node RPC round trips.
 - Mainnet support remains disabled until an explicit release gate is met.
 
@@ -2325,7 +2351,9 @@ Acceptance:
 - finds a capture share and network winner on regtest;
 - opens mask;
 - reconstructs ordinary HNS block;
-- unmodified `hns-node-rs` accepts it.
+- pinned `hns-node-rs` accepts it live;
+- an ordinary, unmodified canonical `hsd` node independently accepts the same
+  block bytes during qualification.
 
 ### WP4 — Stable body package and contextual validation
 
@@ -2436,7 +2464,9 @@ Acceptance:
 - Monte Carlo payout means converge to work proportions;
 - no modulo bias in exhaustive small-domain tests;
 - total outputs never exceed HNS-valid value;
-- unmodified `hns-node-rs` accepts generated blocks;
+- pinned `hns-node-rs` accepts generated blocks live;
+- an ordinary, unmodified canonical `hsd` node independently accepts the same
+  block bytes during qualification;
 - duplicate winners combine deterministically.
 
 ### WP11 — Local ASIC compatibility gateway
@@ -2709,8 +2739,11 @@ release gates pass. An ambiguous consensus-sensitive detail is recorded in
 ### HNS compatibility
 
 ```text
-H1 Every submitted MeshMine block is valid to unmodified hns-node-rs.
-H2 All HNS-sensitive byte operations match hns-node-rs.
+H1 Every submitted MeshMine block is accepted by the pinned live hns-node-rs
+   authority and is independently valid to an ordinary, unmodified canonical
+   hsd node.
+H2 All HNS-sensitive byte operations match pinned hns-node-rs and canonical
+   hsd.
 H3 MeshMine does not change HNS fork choice or chainwork.
 ```
 

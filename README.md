@@ -7,7 +7,8 @@ does not embed a node implementation or JavaScript consensus oracle.
 
 The current code is not production-ready. The Rust protocol components and the
 authenticated native node/Core/operator path are substantial, and the local
-HNSA/HNSR named-route adapter is specified and implemented in `handshake-rs`.
+HNSA/HNSR named-route adapter is specified and implemented in
+`handshake-rs/hns-rs`.
 The public multi-operator daemon and live HNSR reservation/publication/lookup
 path are implemented. Independent deployment evidence, security review, and
 physical ASIC qualification are still release gates.
@@ -55,7 +56,7 @@ The main implemented boundaries are:
   operator-record replacement, live HNSR relay/rendezvous service, and optional
   fail-closed reserve/publish/verified-read-back cycles for `pool-stats`.
 - `meshmine-pool-stats`: endpoint-signed, bounded statistics objects associated
-  with the draft HNSA identity chain implemented in `handshake-rs`.
+  with the draft HNSA identity chain implemented in `handshake-rs/hns-rs`.
 
 The protocol specification remains [MeshMine.md](MeshMine.md). The exact native
 node ownership boundary is in
@@ -65,16 +66,17 @@ template-to-ASIC path is in
 
 ## HIP integration
 
-The companion `handshake-rs` workspace implements the draft HNSA proposal from
-HIP pull request 79. MeshMine's `pool-stats` profile binds every signed snapshot
-to the HNSA service-authorization ID, endpoint-delegation ID, endpoint sequence,
-network, and profile ID. The operator serves the opaque HNSA proof objects with
-the snapshot so an HNSA-aware client can validate the complete chain.
+The companion `handshake-rs/hns-rs` workspace implements the draft HNSA
+proposal from HIP pull request 79. MeshMine's `pool-stats` profile binds every
+signed snapshot to the HNSA service-authorization ID, endpoint-delegation ID,
+endpoint sequence, network, and profile ID. The operator serves the opaque HNSA
+proof objects with the snapshot so an HNSA-aware client can validate the
+complete chain.
 
 HIP pull request 78 currently submits unnamed-node rendezvous for upstream
 review. The local companion HIP draft now defines version-2 named routes that
 carry the exact HNSA authorization and delegation while leaving unnamed route
-version 1 unchanged. `handshake-rs` implements that adapter with stable
+version 1 unchanged. `handshake-rs/hns-rs` implements that adapter with stable
 service-derived route keys, profile-aware tickets, bounded storage admission,
 and complete client verification. `meshmine-operatord` pins that
 implementation revision and carries canonical HNSR packets only after mutual
@@ -104,7 +106,7 @@ When `public_stats` is configured, the operator exposes:
 The HTML page labels its decoded values as unverified because JavaScript served
 by the operator is not an independent trust root. The browser extension and
 mobile native host must validate HNSA and the snapshot signature before showing
-the data as verified. MeshMine now pins the committed `handshake-rs`
+the data as verified. MeshMine now pins the committed `handshake-rs/hns-rs`
 `hns-service-authority` source exactly; independent browser/mobile integration
 qualification remains a release gate for verified client presentation.
 

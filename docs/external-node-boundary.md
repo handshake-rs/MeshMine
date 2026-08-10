@@ -52,18 +52,18 @@ share throughput, and invalidation time.
 
 ## HIP boundary
 
-The companion `handshake-rs` workspace contains the draft HNSA implementation
-for HIP pull request 79 and the local version-2 HNSA/HNSR named-route adapter.
-Service identity, authorization, endpoint delegation, route validation, and
-rendezvous wire behavior remain there. The HNSR/operator dependencies are
-locked to `handshake-rs/hns-rs` revision
+The companion `handshake-rs/hns-rs` workspace contains the draft HNSA
+implementation for HIP pull request 79 and the local version-2 HNSA/HNSR
+named-route adapter. Service identity, authorization, endpoint delegation,
+route validation, and rendezvous wire behavior remain there. The HNSR/operator
+dependencies are locked to `handshake-rs/hns-rs` revision
 `b24b66c382de53330ec21dd3137e056a2bea3e2d`. MeshMine owns only its
 `pool-stats` profile-specific snapshot and application policy.
 
 HIP pull request 78 remains limited to unnamed-node rendezvous in its submitted
 upstream scope. The local companion HIP preserves that route format and adds a
 separate named version. MeshMine may consume the adapter after its exact
-`handshake-rs` source is committed and pinned; it must not duplicate those
+`handshake-rs/hns-rs` source is committed and pinned; it must not duplicate those
 semantics inside the node or silently treat direct HTTP as HNSR.
 
 ## Fail-closed limits

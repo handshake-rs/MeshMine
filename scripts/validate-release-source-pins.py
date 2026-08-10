@@ -79,6 +79,12 @@ def declared_git_sources() -> set[str]:
     expected = set()
     for manifest_path in manifests:
         manifest = load_toml(manifest_path)
+        for key in ("patch", "replace"):
+            value = manifest.get(key, {})
+            if not isinstance(value, dict) or value:
+                fail(
+                    f"{manifest_path.relative_to(ROOT)} contains a forbidden {key} override"
+                )
         tables = dependency_tables(manifest)
         if manifest_path == ROOT / "Cargo.toml":
             tables.append(workspace_dependencies)
@@ -102,7 +108,25 @@ def declared_git_sources() -> set[str]:
     return expected
 
 
+def validate_local_cargo_config() -> None:
+    for path in (ROOT / ".cargo" / "config.toml", ROOT / ".cargo" / "config"):
+        if not path.exists():
+            continue
+        config = load_toml(path)
+        paths = config.get("paths", [])
+        sources = config.get("source", {})
+        if not isinstance(paths, list) or paths:
+            fail(f"{path.relative_to(ROOT)} contains a Cargo path override")
+        if not isinstance(sources, dict) or sources:
+            fail(f"{path.relative_to(ROOT)} contains a Cargo source override")
+        for key in ("patch", "replace"):
+            value = config.get(key, {})
+            if not isinstance(value, dict) or value:
+                fail(f"{path.relative_to(ROOT)} contains a Cargo {key} override")
+
+
 def main() -> None:
+    validate_local_cargo_config()
     lock = load_toml(ROOT / "Cargo.lock")
     packages = lock.get("package")
     if not isinstance(packages, list):

@@ -1,8 +1,8 @@
 //! Public, endpoint-signed statistics for independently operated MeshMine nodes.
 //!
 //! This is the profile-specific endpoint object required by the draft HNSA
-//! proposal. HNSA validation remains in `handshake-rs`; this crate does not
-//! duplicate name-state, service-authorization, or endpoint-delegation logic.
+//! proposal. HNSA validation remains in `handshake-rs/hns-rs`; this crate does
+//! not duplicate name-state, service-authorization, or endpoint-delegation logic.
 
 use std::collections::BTreeMap;
 

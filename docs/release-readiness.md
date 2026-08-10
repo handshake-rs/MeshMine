@@ -34,10 +34,12 @@ look released.
 | `hns-node-rs` | `9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b` | sole Rust node, mining, and Handshake authority boundary |
 | `hns-rs` | `b24b66c382de53330ec21dd3137e056a2bea3e2d` | draft HNSA service authority and HNSR protocol adapter |
 
-The manifests and complete lock graph must agree on those commits. Run
-`python3 scripts/validate-release-source-pins.py`; CI runs the same check before
-compilation. Git availability and a green upstream build are necessary inputs,
-not evidence that MeshMine itself passed its release gates.
+The manifests and complete lock graph must agree on those commits. Repository
+manifest patches, replacements, and local Cargo path/source overrides are
+forbidden. Run `python3 scripts/validate-release-source-pins.py`; CI runs the
+same check in a clean checkout before compilation. Git availability and a green
+upstream build are necessary inputs, not evidence that MeshMine itself passed
+its release gates.
 
 `python3 scripts/validate-release-metadata.py` separately verifies that all 27
 members inherit one private version, license, edition, and Rust requirement and

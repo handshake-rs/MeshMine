@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import tomllib
 from pathlib import Path
 from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parents[1]
+FULL_REVISION = re.compile(r"[0-9a-f]{40}")
 
 SOURCES = {
     "hns-node-rs": {
@@ -41,11 +43,88 @@ def load_toml(path: Path) -> dict:
     return value
 
 
+def dependency_tables(manifest: dict) -> list[dict]:
+    output = []
+    for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+        value = manifest.get(key, {})
+        if not isinstance(value, dict):
+            fail(f"invalid {key} table")
+        output.append(value)
+    targets = manifest.get("target", {})
+    if not isinstance(targets, dict):
+        fail("invalid target table")
+    for target in targets.values():
+        if not isinstance(target, dict):
+            fail("invalid target selector table")
+        for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+            value = target.get(key, {})
+            if not isinstance(value, dict):
+                fail(f"invalid target {key} table")
+            output.append(value)
+    return output
+
+
+def declared_git_sources() -> set[str]:
+    root_manifest = load_toml(ROOT / "Cargo.toml")
+    workspace = root_manifest.get("workspace")
+    if not isinstance(workspace, dict):
+        fail("Cargo.toml has no workspace table")
+    members = workspace.get("members")
+    workspace_dependencies = workspace.get("dependencies", {})
+    if not isinstance(members, list) or not isinstance(workspace_dependencies, dict):
+        fail("Cargo.toml has incomplete workspace dependency metadata")
+    manifests = [ROOT / "Cargo.toml"]
+    manifests.extend(ROOT / member / "Cargo.toml" for member in members)
+
+    expected = set()
+    for manifest_path in manifests:
+        manifest = load_toml(manifest_path)
+        tables = dependency_tables(manifest)
+        if manifest_path == ROOT / "Cargo.toml":
+            tables.append(workspace_dependencies)
+        for dependencies in tables:
+            for name, dependency in dependencies.items():
+                if not isinstance(dependency, dict) or "git" not in dependency:
+                    continue
+                url = dependency.get("git")
+                revision = dependency.get("rev")
+                if not isinstance(url, str) or not url.startswith("https://"):
+                    fail(
+                        f"{manifest_path.relative_to(ROOT)}:{name} uses a non-HTTPS Git source"
+                    )
+                if not isinstance(revision, str) or FULL_REVISION.fullmatch(revision) is None:
+                    fail(
+                        f"{manifest_path.relative_to(ROOT)}:{name} lacks a full Git revision"
+                    )
+                if "path" in dependency or "branch" in dependency or "tag" in dependency:
+                    fail(f"{manifest_path.relative_to(ROOT)}:{name} mixes source selectors")
+                expected.add(f"git+{url}?rev={revision}#{revision}")
+    return expected
+
+
 def main() -> None:
     lock = load_toml(ROOT / "Cargo.lock")
     packages = lock.get("package")
     if not isinstance(packages, list):
         fail("Cargo.lock has no package list")
+
+    declared = declared_git_sources()
+    locked = {
+        package.get("source")
+        for package in packages
+        if isinstance(package, dict)
+        and isinstance(package.get("source"), str)
+        and package["source"].startswith("git+")
+    }
+    missing_sources = sorted(declared - locked)
+    unexpected_sources = sorted(locked - declared)
+    if missing_sources:
+        fail("Cargo.lock omits declared Git sources: " + ", ".join(missing_sources))
+    if unexpected_sources:
+        fail(
+            "Cargo.lock contains undeclared Git sources: "
+            + ", ".join(unexpected_sources)
+        )
 
     for label, policy in SOURCES.items():
         manifest_path = policy["manifest"]

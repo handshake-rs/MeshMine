@@ -12,7 +12,7 @@ from typing import NoReturn
 ROOT = Path(__file__).resolve().parents[1]
 EMBEDDED_NODE = (ROOT / "hsrd").resolve()
 BRIDGE = (ROOT / "crates" / "meshmine-hsrd-bridge" / "Cargo.toml").resolve()
-EXPECTED_NODE_REVISION = "8bbcd61d96293ca5d895fe60845f180a94e5c38e"
+EXPECTED_NODE_REVISION = "9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b"
 EXPECTED_NODE_DEPENDENCY_SOURCE = (
     "git+https://github.com/handshake-rs/hns-node-rs.git"
     f"?rev={EXPECTED_NODE_REVISION}"

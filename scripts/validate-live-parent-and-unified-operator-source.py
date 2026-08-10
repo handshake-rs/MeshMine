@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
-expected_node_revision = '8bbcd61d96293ca5d895fe60845f180a94e5c38e'
+expected_node_revision = '9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b'
 expected_node_source = (
     'git+https://github.com/handshake-rs/hns-node-rs.git'
     f'?rev={expected_node_revision}#{expected_node_revision}'

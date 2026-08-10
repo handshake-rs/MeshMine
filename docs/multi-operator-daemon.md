@@ -12,7 +12,7 @@ The daemon composes:
   per-operator sequences;
 - the live HNSR relay reservation and rendezvous route service pinned from
   `handshake-rs/hns-rs` at
-  `29e4b473bd2cfee460b56d5092b7bc28da5ec5dc`;
+  `b24b66c382de53330ec21dd3137e056a2bea3e2d`;
 - profile allowlists and independent relay, route-store, peer-download, and
   transport limits; and
 - optional `pool-stats` reservation, publication, and verified read-back
@@ -31,7 +31,8 @@ The process starts with:
 meshmine-operatord serve --config /etc/meshmine/operatord.json
 ```
 
-Configuration and key paths must be absolute in production operations.
+Configuration and key paths must be absolute in deployed evaluation
+environments.
 Private files must be regular, non-symlink files with mode `0600` or stricter.
 The state database is the durable authority for operator replacement and HNSR
 publication sequences.
@@ -121,6 +122,8 @@ Crash gaps in route sequences are safe. Sequence reuse, equal-sequence
 conflicts, nonce replay, cross-peer confirmation, stale authority, partial
 publication, and unverified read-back fail closed.
 
-This implementation removes the missing-code release gate. It does not replace
-independent deployment, public-WAN adversarial testing, HNSA/HNSR standard
-review, physical ASIC qualification, or security audit.
+This implementation closes the local source-composition gap. It does not make
+the private `pool-stats` profile an accepted HNSA assignment, qualify a public
+HNSR deployment, or replace public-WAN adversarial testing, physical ASIC
+qualification, or independent security review. It provides no wallet,
+exchange-settlement, order-book, or marketplace service.

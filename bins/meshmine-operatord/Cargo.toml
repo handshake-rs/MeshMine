@@ -10,8 +10,8 @@ description = "Authenticated multi-operator MeshMine overlay and HNSR rendezvous
 [dependencies]
 ed25519-dalek.workspace = true
 hex.workspace = true
-hns-hnsr-protocol = { git = "https://github.com/handshake-rs/hns-rs.git", rev = "29e4b473bd2cfee460b56d5092b7bc28da5ec5dc" }
-hns-service-authority = { git = "https://github.com/handshake-rs/hns-rs.git", rev = "29e4b473bd2cfee460b56d5092b7bc28da5ec5dc" }
+hns-hnsr-protocol = { git = "https://github.com/handshake-rs/hns-rs.git", rev = "b24b66c382de53330ec21dd3137e056a2bea3e2d" }
+hns-service-authority = { git = "https://github.com/handshake-rs/hns-rs.git", rev = "b24b66c382de53330ec21dd3137e056a2bea3e2d" }
 libc.workspace = true
 meshmine-network = { path = "../../crates/meshmine-network" }
 meshmine-codec = { path = "../../crates/meshmine-codec" }

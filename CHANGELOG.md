@@ -19,6 +19,12 @@ not published a tagged release.
   JavaScript oracle.
 - Document the current HNSA/HNSR, wallet, marketplace, packaging, and release
   boundaries without changing production eligibility.
+- Define the first private Ubuntu 24.04 x86-64 evaluation bundle, including its
+  exact binary/configuration scope and fail-closed install, upgrade, rollback,
+  checksum, and provenance boundaries.
+- Add a manual credential-free GitHub Actions workflow that retains the
+  exact-source evaluation candidate without tagging, signing, publishing, or
+  deploying it.
 
 The workspace version remains `0.1.0`. With no tag or published release to
 establish whether that version has shipped, the next version is intentionally

@@ -37,6 +37,11 @@ Private files must be regular, non-symlink files with mode `0600` or stricter.
 The state database is the durable authority for operator replacement and HNSR
 publication sequences.
 
+The credential-free configuration shape below is also maintained as
+[`specs/multi-operator.example.json`](../specs/multi-operator.example.json).
+Its addresses, public keys, and paths are documentation placeholders, not a
+deployable operator identity.
+
 ```json
 {
   "schema_version": 1,

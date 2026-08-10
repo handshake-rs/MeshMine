@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "network_id": 2,
+  "network_magic": 1836019566,
+  "listen": "0.0.0.0:14439",
+  "certificate_file": "/etc/meshmine/tls/certificate.der",
+  "certificate_key_file": "/etc/meshmine/tls/private-key.der",
+  "transport_signing_key_file": "/etc/meshmine/transport-key.hex",
+  "economic_operator_pubkey": null,
+  "state_file": "/var/lib/meshmine/operatord.redb",
+  "relay": {
+    "signing_key_file": "/etc/meshmine/hnsr-relay-key.hex",
+    "public_address": "203.0.113.10:14039",
+    "allow_private_address": false,
+    "supported_profiles": [65280],
+    "maximum_reservations": 4096,
+    "maximum_reservations_per_source": 64,
+    "maximum_bytes_per_circuit": 16777216
+  },
+  "rendezvous": {
+    "allow_private_routes": false,
+    "total_records": 50000,
+    "records_per_key": 16,
+    "records_per_source": 1024
+  },
+  "publication": {
+    "endpoint_signing_key_file": "/etc/meshmine/pool-stats-endpoint-key.hex",
+    "service_authorization_file": "/etc/meshmine/hsa1-authorization.hex",
+    "endpoint_delegation_file": "/etc/meshmine/hsa1-delegation.hex",
+    "authority_context_file": "/run/meshmine/hns-authority-context.json",
+    "reservation_lifetime_seconds": 1200,
+    "route_lifetime_seconds": 600,
+    "reservation_circuits": 8,
+    "reservation_bytes": 67108864,
+    "publication_interval_ms": 300000
+  },
+  "peers": [
+    {
+      "remote": "198.51.100.20:14439",
+      "server_name": "operator-b.example",
+      "certificate_file": "/etc/meshmine/peers/operator-b.der",
+      "expected_transport_pubkey": "6464646464646464646464646464646464646464646464646464646464646464",
+      "hnsr_relay_key": "026565656565656565656565656565656565656565656565656565656565656565",
+      "reconnect_initial_ms": 1000,
+      "reconnect_maximum_ms": 60000
+    }
+  ]
+}

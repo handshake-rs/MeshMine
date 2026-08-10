@@ -1,0 +1,94 @@
+name: Private candidate artifact
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install declared Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+
+      - name: Select and verify declared target
+        run: |
+          rustup default 1.97.1
+          test "$(rustc -vV | sed -n 's/^host: //p')" = "$TARGET"
+
+      - name: Verify private release metadata and immutable sources
+        run: |
+          cargo metadata --locked --format-version 1 > /dev/null
+          python3 scripts/validate-release-metadata.py
+          python3 scripts/validate-release-source-pins.py
+          python3 scripts/validate-external-node-boundary.py
+          python3 scripts/validate-core-link-source.py
+          python3 scripts/validate-live-parent-and-unified-operator-source.py
+
+      - name: Build contracted evaluation binaries
+        run: |
+          cargo build --locked --release --target "$TARGET" \
+            --package meshmine-cored \
+            --package meshmine-corelink-operatord \
+            --package meshmine-operatord
+
+      - name: Assemble exact-source candidate
+        run: |
+          python3 scripts/package-private-candidate.py \
+            --binary-dir "target/$TARGET/release" \
+            --output-dir "$RUNNER_TEMP/private-candidate" \
+            --source-commit "$GITHUB_SHA" \
+            --target "$TARGET"
+
+      - name: Verify candidate checksums and provenance
+        run: |
+          cd "$RUNNER_TEMP/private-candidate"
+          sha256sum -c -- *.tar.gz.sha256
+          mkdir extracted
+          tar -xzf ./*.tar.gz -C extracted
+          bundle="$(find extracted -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -n "$bundle"
+          cd "$bundle"
+          sha256sum -c SHA256SUMS
+          test -x bin/meshmine-cored
+          test -x bin/meshmine-corelink-operatord
+          test -x bin/meshmine-operatord
+          python3 - "$GITHUB_SHA" "$TARGET" <<'PY'
+          import json
+          import pathlib
+          import sys
+          import tomllib
+
+          provenance = json.loads(pathlib.Path("PROVENANCE.json").read_text())
+          workspace = tomllib.loads(pathlib.Path("provenance/Cargo.toml").read_text())
+          expected_version = workspace["workspace"]["package"]["version"]
+          assert provenance["artifact_contract"] == "meshmine-private-evaluation-v1"
+          assert provenance["source_commit"] == sys.argv[1]
+          assert provenance["target"] == sys.argv[2]
+          assert provenance["version"] == expected_version
+          assert provenance["production_eligible"] is False
+          PY
+
+      - name: Retain private candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: meshmine-private-evaluation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/private-candidate/*.tar.gz
+            ${{ runner.temp }}/private-candidate/*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14

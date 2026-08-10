@@ -13,19 +13,22 @@ production-readiness assertion or release authorization.
 | Cargo publication | disabled for every workspace package (`publish = false`) |
 | License | MIT; canonical text is in `LICENSE-MIT` |
 | Tags and GitHub releases | none |
-| Release workflow | none; CI qualifies source but does not sign, package, tag, or publish |
-| Artifact contract | not yet selected |
+| Release workflow | none; CI qualifies source and the manual candidate workflow retains an evaluation artifact, but neither signs, tags, publishes, or deploys |
+| Artifact contract | `meshmine-private-evaluation-v1`; pre-production Ubuntu 24.04 x86-64 candidate only |
 
 The repository history does not establish that `0.1.0` was released, so it
 does not make `0.1.1` or `0.2.0` an unambiguous next version. Choose whether
 the first supported artifact is the existing `0.1.0` identity or a newly
 defined compatibility milestone before changing all workspace versions.
 
-MeshMine is principally a set of coordinated daemons and libraries. A binary
-archive or deployment bundle is likely a better first distribution target than
-crates.io, but that is a release-policy decision. Do not remove `publish =
-false`, tag a commit, or publish an archive merely to make the current source
-look released.
+MeshMine is principally a set of coordinated daemons and libraries. The first
+bounded contract is therefore a private binary evaluation archive rather than
+crates.io publication. Its exact contents, target, provenance, checksum,
+installation, upgrade, and rollback boundaries are defined in
+[the private candidate contract](private-candidate-artifact.md). Selecting that
+candidate shape does not authorize a release. Do not remove `publish = false`,
+tag a commit, or publish an archive merely to make the current source look
+released.
 
 ## Immutable ecosystem inputs
 
@@ -45,6 +48,22 @@ its release gates.
 members inherit one private version, license, edition, and Rust requirement and
 that the lockfile uses that same identity. Keep both checks green when the
 eventual version is selected.
+
+## Private candidate boundary
+
+The credential-free, manually dispatched
+`.github/workflows/private-candidate.yml` builds only `meshmine-cored`,
+`meshmine-corelink-operatord`, and `meshmine-operatord` for the exact
+`x86_64-unknown-linux-gnu` runner target. It packages credential-free examples,
+the exact lock graph, documentation, source provenance, and two checksum layers,
+then retains them as a 14-day GitHub Actions artifact.
+
+This is deliberately narrower than the workspace. It excludes the standalone
+gateway already embedded by the supported operator, the skeletal work
+coordinator, developer tools, `hsrd`, credentials, runtime state, installers,
+service units, and deployment policy. It creates no tag, GitHub Release,
+registry package, signature, or cloud resource. A successful workflow run is
+candidate-build evidence only.
 
 ## Implemented and unavailable product surfaces
 
@@ -82,8 +101,12 @@ MM-0001 lists work-receipt markets only as a future Stage-5 RFC.
   `specs/OPEN-QUESTIONS.md` remain open.
 - No independent protocol/implementation security review or target-platform
   endurance campaign authorizes production use.
-- No installable artifact format, supported-platform matrix, signing policy,
-  upgrade/rollback procedure, or release workflow has been approved.
+- The private candidate covers only Ubuntu 24.04 x86-64 evaluation; no broader
+  target-platform matrix or endurance evidence exists.
+- No production installer, service-manager integration, credential lifecycle,
+  state-migration procedure, signing policy, or release workflow has been
+  approved. The candidate contract permits only side-by-side disposable state
+  and whole-version rollback.
 
 The authoritative detailed gates remain in [the README](../README.md),
 [MM-0001](../MeshMine.md), [the threat model](../specs/threat-model.md), and
@@ -93,14 +116,17 @@ The authoritative detailed gates remain in [the README](../README.md),
 
 Before any first release:
 
-1. Resolve or explicitly scope every blocker above and choose the supported
-   artifact contract.
+1. Resolve or explicitly scope every blocker above; the current private
+   evaluation contract is not a production distribution contract.
 2. Choose the version once, update the workspace and changelog together, and
    keep all packages on that identity unless a split-version policy is adopted.
 3. Qualify the exact candidate commit with the full CI and RustSec jobs; retain
    source-pin and artifact provenance.
-4. Build reproducible target artifacts in CI, generate checksums, and verify
-   their embedded version and exact source identities.
-5. Review licenses, operator configuration migrations, install/upgrade/rollback
-   instructions, and release notes.
+4. Dispatch the credential-free candidate workflow for the exact commit,
+   verify both checksum layers and embedded source identities, and retain the
+   run URL and artifact digest. Do not infer cross-run binary reproducibility
+   until it is separately demonstrated.
+5. Review third-party licenses and define any production configuration
+   migration, installation, service-management, upgrade, rollback, and signing
+   policy beyond the private evaluation boundary.
 6. Tag, sign, upload, or publish only after explicit release authorization.

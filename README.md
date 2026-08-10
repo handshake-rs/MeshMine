@@ -17,7 +17,10 @@ The workspace currently identifies as private version `0.1.0`; it has no
 release tag, and no workspace package is configured for publication. See
 [the release-readiness inventory](docs/release-readiness.md) and
 [the changelog](CHANGELOG.md) before changing that identity or producing an
-artifact.
+artifact. A bounded
+[private candidate contract](docs/private-candidate-artifact.md) now defines a
+credential-free Ubuntu 24.04 x86-64 evaluation archive; it is not a release or
+production deployment format.
 
 ## Current architecture
 

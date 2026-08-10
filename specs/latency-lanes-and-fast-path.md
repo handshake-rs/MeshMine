@@ -115,7 +115,7 @@ gateway capture
 Publication attempts must persist an intent before external submission and
 record each terminal result independently. One slow or failed target must not
 serialize the others. The Core path now uses the pinned external `hns-node-rs`
-node as its only runtime parent/permit source; hns-node-rs is retained only as an
+node as its only runtime parent/permit source; JavaScript `hsd` is retained only as an
 offline fixture and differential oracle, not as a shadow or broadcast
 fallback. The node's functional readiness is complete; its base
 `pre-authority` stage is replaced in live native RPC by a mode-specific
@@ -221,7 +221,7 @@ Every failure has a deterministic local result:
 | body threshold unavailable | use valid local body if present; otherwise fail that candidate safely | request missing chunks and record failure |
 | mask threshold refusal | run precommitted recovery, then expire and retire job | reconcile accounting without reuse |
 | authoritative external-node snapshot unavailable or stale | stop new jobs; continue already-started fan-out only through valid independent targets | preserve evidence |
-| offline hns-node-rs audit disagreement | pause promotion and new release claims | reconcile deterministically; do not choose by timeout |
+| offline `hsd` audit disagreement | pause promotion and new release claims | reconcile deterministically; do not choose by timeout |
 | settlement-lane overload | backpressure/replay settlement only | fast/accounting reserved capacity remains available |
 
 The implementation is not production-ready until these transitions are

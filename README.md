@@ -12,6 +12,12 @@ The public multi-operator daemon and live HNSR reservation/publication/lookup
 path are implemented. Independent deployment evidence, security review, and
 physical ASIC qualification are still release gates.
 
+The workspace currently identifies as private version `0.1.0`; it has no
+release tag, and no workspace package is configured for publication. See
+[the release-readiness inventory](docs/release-readiness.md) and
+[the changelog](CHANGELOG.md) before changing that identity or producing an
+artifact.
+
 ## Current architecture
 
 ```text
@@ -80,6 +86,13 @@ from each rendezvous peer.
 See [specs/pool-stats-profile.md](specs/pool-stats-profile.md) for the private
 profile used while an official HNSA profile assignment is pending.
 
+This is a narrowly scoped, read-only discovery path for MeshMine pool
+statistics. HNSA and HNSR remain draft protocols, and the private profile is
+not an accepted interoperability assignment. MeshMine does not expose wallet
+controls, transfers, name management, exchange settlement, an order book, or a
+P2P marketplace. The `hns-denuo-market-relay` package present through the
+external node's locked dependency graph is not integrated into MeshMine.
+
 ## Browser-readable public statistics
 
 When `public_stats` is configured, the operator exposes:
@@ -141,32 +154,42 @@ and accepted shares before any production use.
 
 ## Build and verification
 
-Rust 1.97 is required.
+Rust 1.97.1 is required. The workspace is private (`publish = false`); these
+commands qualify source and do not publish crates or create a release.
 
 ```sh
-cargo +1.97.0 fmt --all -- --check
-cargo +1.97.0 test --workspace --all-targets
-cargo +1.97.0 clippy --workspace --all-targets -- -D warnings
+cargo +1.97.1 fmt --all -- --check
+cargo +1.97.1 clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo +1.97.1 test --locked --workspace --all-targets --all-features
+python3 scripts/validate-release-source-pins.py
+python3 scripts/validate-release-metadata.py
 python3 scripts/validate-external-node-boundary.py
 python3 scripts/validate-core-link-source.py
 python3 scripts/validate-live-parent-and-unified-operator-source.py
 python3 scripts/validate-work-fabric-source.py
 ```
 
-Some GPU tests require Vulkan and may skip when no suitable device exists.
+Some GPU tests require Vulkan and may skip when no suitable device exists. The
+full release build, performance gates, and pinned RustSec audit remain required
+CI checks even when a local source-only pass is used to conserve build space.
 
 ## Release gates
 
 Before calling the system production-ready, all of the following remain
 required:
 
-- compose and operate the new multi-operator daemon against independent nodes;
+- operate the multi-operator daemon against independent nodes;
 - operate live HNSR publication across independent relays/rendezvous nodes and
   measure renewal, expiry, read-back, partition, and authority-rotation behavior;
-- publish and pin the HNSA implementation for verified extension/mobile views;
+- qualify independently verified extension/mobile clients against the exact
+  pinned HNSA source and settle its publication/distribution contract;
 - complete physical ASIC acceptance and sustained-load testing;
 - run public-WAN partition, replay, churn, eclipse, and resource-exhaustion
   tests;
 - complete independent protocol and implementation security review; and
 - deliberately enable production eligibility only after every fail-closed
   authority gate is satisfied.
+
+## License
+
+MeshMine is available under the [MIT license](LICENSE-MIT).

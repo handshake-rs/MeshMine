@@ -2,7 +2,7 @@
 
 This design closes two evaluation gaps:
 
-1. Static parent-certificate allowlisting and runtime hns-node-rs shadowing are replaced
+1. Static parent-certificate allowlisting and runtime `hsd` shadowing are replaced
    with authenticated native `hsrd` authority, using one coherent authority,
    tip, validation, and header snapshot plus strict current-tip authorization.
 2. The authenticated Core-link bridge is composed with the continuous operator

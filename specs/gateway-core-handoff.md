@@ -126,8 +126,8 @@ This is a local pre-production boundary. The Core daemon now checks the exact
 parent against a mandatory authenticated loopback `hsrd` source. One atomic
 RPC snapshot must report complete native consensus readiness, an authoritative
 durable active tip, no pending better-chain activation, and matching hash,
-height, time, and chainwork. hns-node-rs is not invoked by this runtime path. The
-operator composes the Core link with the local
+height, time, and chainwork. JavaScript `hsd` is not invoked by this runtime
+path. The operator composes the Core link with the local
 supervisor, fallback hysteresis, dashboard, event journal, reconnect backoff,
 and bounded shutdown drain.
 

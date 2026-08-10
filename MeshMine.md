@@ -9,6 +9,11 @@
 **Date:** July 17, 2026  
 **Canonical project name:** **HNS MeshMine**  
 
+This date identifies the Core-v2 design revision. Current implementation,
+packaging, and release state is tracked separately in
+[`docs/release-readiness.md`](docs/release-readiness.md); imperative work-package
+text below is not a claim that a package is still absent or production-ready.
+
 ---
 
 ## 0. Executive decision
@@ -2199,9 +2204,13 @@ MPC backend process:
 ```text
 HNS-MeshMine/
 ├── CODEX.md
+├── CHANGELOG.md
+├── LICENSE-MIT
 ├── README.md
 ├── Cargo.toml
 ├── MeshMine.md
+├── docs/
+│   └── release-readiness.md
 ├── specs/
 │   ├── pool-stats-profile.md
 │   └── threat-model.md
@@ -2217,10 +2226,16 @@ HNS-MeshMine/
 │   ├── meshmine-network/
 │   ├── meshmine-storage/
 │   ├── meshmine-gateway/
+│   ├── meshmine-handoff/
 │   ├── meshmine-hsrd-bridge/
 │   ├── meshmine-core-link/
+│   ├── meshmine-fast-path/
+│   ├── meshmine-parent-oracle/
 │   ├── meshmine-pool-stats/
+│   ├── meshmine-service/
 │   ├── meshmine-committee-risk/
+│   ├── meshmine-committee/
+│   ├── meshmine-work/
 │   └── meshmine-sim/
 ├── bins/
 │   ├── meshmine-cored/
@@ -2231,8 +2246,7 @@ HNS-MeshMine/
 ├── mpc/
 │   ├── README.md
 │   ├── circuits/
-│   ├── adapters/
-│   └── test-vectors/
+│   └── mp-spdz/
 ├── models/
 │   ├── mask-session.tla
 │   ├── receipt-close.tla

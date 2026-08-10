@@ -46,18 +46,18 @@ new work while exact historical retries remain idempotent.
 The remaining questions are operational/service boundaries, not permission to
 invent new credit semantics:
 
-1. Freeze the continuous Unix-domain peer-credential and mutual-Ed25519 service
-   framing, context distribution, rate limits, and spool pressure policy.
+1. Independently review and freeze the implemented Unix-domain peer-credential
+   and mutual-Ed25519 framing, context distribution, rate limits, and spool
+   pressure policy.
 2. Atomically orchestrate the implemented durable `hsrd`
    generation/prepared-job/body/assignment record across Core authorization and
    gateway restart/activation; the canonical gateway job ID is already the
    exact assignment object ID and sequence allocation is atomic with
    activation.
-3. ACK the ASIC-side capture only after accepted or noncredit terminal state;
-   recover the admission-before-ACK crash window without creating another
-   disposition.
-4. Orchestrate signed drain, Core drain receipt, and successor activation in
-   both live processes, with restart tests and physical device evidence.
+3. Fault-test the implemented terminal-disposition-before-ACK path across every
+   admission, receipt, operator-spool, and gateway-compaction crash window.
+4. Qualify the implemented signed drain, Core drain receipt, and successor
+   activation path with restart tests and physical device evidence.
 
 ## Canonical commitment availability and overlay identity
 

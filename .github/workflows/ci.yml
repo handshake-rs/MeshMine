@@ -23,6 +23,8 @@ jobs:
         run: cargo metadata --locked --format-version 1 > /dev/null
       - name: Verify immutable release-source pins
         run: python3 scripts/validate-release-source-pins.py
+      - name: Verify coherent private release metadata
+        run: python3 scripts/validate-release-metadata.py
       - name: Verify immutable external-node source boundary
         run: python3 scripts/validate-external-node-boundary.py
       - name: Validate portable work-fabric source handoff

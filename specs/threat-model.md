@@ -67,6 +67,12 @@ adapter specifies version-2 named routes without changing the submitted unnamed
 route format. MeshMine uses private profile ID `0xff00` and must migrate
 deliberately if the accepted specifications differ.
 
+The implemented route carries only the read-only MeshMine `pool-stats`
+application profile. It is not authority for wallet actions, transfers, name
+management, exchange settlement, orders, or a marketplace. A similarly named
+package in the external node's transitive lock graph does not create a
+MeshMine market integration.
+
 Publishing counts leaks miner activity, share rate, operating mode, and tip
 state. The feed is opt-in. A reverse proxy, HTTPS, request-rate controls, and
 traffic privacy remain deployment responsibilities.

@@ -123,8 +123,8 @@ HNSA/HNSR integration remains limited by all of the following:
 MeshMine has no wallet-control surface, transaction or name-management UI,
 exchange settlement, order protocol, order book, or P2P marketplace. Its
 coinbase payout planning is mining-overlay accounting, not a general payment or
-market service. `hns-denuo-market-relay` appears only through the pinned
-external node's transitive lock graph and is not consumed by MeshMine code.
+market service. MeshMine does not consume the external node's
+marketplace-relay surface.
 MM-0001 lists work-receipt markets only as a future Stage-5 RFC.
 
 ## Release blockers

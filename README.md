@@ -95,8 +95,8 @@ This is a narrowly scoped, read-only discovery path for MeshMine pool
 statistics. HNSA and HNSR remain draft protocols, and the private profile is
 not an accepted interoperability assignment. MeshMine does not expose wallet
 controls, transfers, name management, exchange settlement, an order book, or a
-P2P marketplace. The `hns-denuo-market-relay` package present through the
-external node's locked dependency graph is not integrated into MeshMine.
+P2P marketplace. MeshMine does not consume the node's marketplace-relay
+surface.
 
 ## Browser-readable public statistics
 

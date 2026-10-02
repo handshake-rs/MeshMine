@@ -1,6 +1,6 @@
 # Latency lanes and the block-publication fast path
 
-Status date: 2026-07-18. Receive callbacks, live forwarding queues, per-peer
+Receive callbacks, live forwarding queues, per-peer
 in-flight sends, and durable replay are isolated for the existing authenticated
 overlay topics. End-to-end job activation, winner opening, reconstruction, and
 multi-path publication are not yet production composed, so the latency

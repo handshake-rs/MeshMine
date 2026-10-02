@@ -32,8 +32,8 @@ The following draft ambiguities were resolved only for the evaluation wire profi
 
 ## Gateway-to-Core production composition
 
-The gateway extension now resolves the former five object/state questions
-without reinterpreting `AssignmentV2`: `GatewayAssignmentV1` signs the exact
+Gateway-to-Core composition enforces these current invariants without
+reinterpreting `AssignmentV2`: `GatewayAssignmentV1` signs the exact
 Handy `prefix4 || ExtraNonce2[4] || zero16` range before mining; a signed
 manifest binds the operator, gateway, and Core identities; the assignment
 selects Core receipt time or bounded signed gateway time; every capture gets a
@@ -41,7 +41,7 @@ Core-signed accepted/rejected/grace/duplicate disposition; and accepted
 evidence, cursor, Core work key, and `ShareV2` commit atomically. Durable context
 and assignment heads prevent rollback. Capture, drain, and successor-transition
 transactions share one active-state CAS, so a drained assignment cannot admit
-new work while exact historical retries remain idempotent.
+new work while exact accepted-object retries remain idempotent.
 
 The remaining questions are operational/service boundaries, not permission to
 invent new credit semantics:

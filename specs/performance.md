@@ -12,14 +12,17 @@ The first command validates the exact full share path repeatedly: object linkage
 
 The second reconstructs a 4 MiB Reed–Solomon body and recomputes a 56-ticket payout plan against 100,000 exact work buckets. Cumulative weights are built once and each ticket uses binary search, avoiding an `O(bucket_count × ticket_count)` verifier.
 
-Results on the 2026-07-17 aarch64 development host:
+Require these limits on the exact evaluation target:
 
-| Gate | Result | Target |
-|---|---:|---:|
-| Share validation/core | 493.943/s | ≥100/s |
-| 4 MiB threshold reconstruction | 36.754 ms | <1,000 ms |
-| 100,000-bucket payout verification | 70.659 ms | <100 ms |
+| Gate | Required result |
+|---|---:|
+| Share validation/core | ≥100/s |
+| 4 MiB threshold reconstruction | <1,000 ms |
+| 100,000-bucket payout verification | <100 ms |
 
-The `d=15` capture profile at bits `0x1925ae67` models 92.7584 capture shares/s network-wide, above the 50/s baseline target, while the measured validator retains substantial single-core headroom. Production `d` remains configuration-gated and must use actual testnet measurements.
+The `d=15` capture profile at bits `0x1925ae67` models 92.7584 capture shares/s
+network-wide against the 50/s baseline target. Production `d` remains
+configuration-gated and must use actual testnet measurements. Measure validator
+headroom on the candidate's target; simulation does not establish capacity.
 
 Receipt-finalization latency, public propagation latency, timed-opening latency under real failure domains, and multi-node winner submission are deployment metrics and are not inferred from these local microbenchmarks.

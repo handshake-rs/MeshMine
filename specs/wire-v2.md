@@ -15,4 +15,3 @@ MM-0001 fixes field order and integer endianness but leaves several low-level re
 - An object ID is BLAKE2b-256 over `varint(tag_length) || tag || canonical_unsigned_body`. Signature material and the ID itself are never part of that preimage.
 
 These decisions must be independently reviewed before any production wire freeze. Changes require a protocol-version bump or an explicit compatibility rule.
-

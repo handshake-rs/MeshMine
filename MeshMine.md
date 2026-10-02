@@ -899,7 +899,7 @@ Recommended production behavior:
 - construct a replacement body asynchronously;
 - switch only after the replacement is validated and available.
 
-This removes the previous design's requirement to redownload and recertify an entire block every few seconds.
+A stable body package can be reused across mask sessions without downloading and certifying the complete block for each session.
 
 ---
 
@@ -1792,7 +1792,7 @@ On reorganization:
 
 The native overlay SHOULD use authenticated QUIC or libp2p over QUIC. Large body data MUST use request/response streams, not unrestricted gossip.
 
-Superseded Stratum, if used, terminates locally between an ASIC and its own MeshMine gateway. It is not the MeshMine peer protocol.
+Stock Stratum, if used, terminates locally between an ASIC and its own MeshMine gateway. It is not the MeshMine peer protocol.
 
 ### 16.2 Gossip topics
 

@@ -1,8 +1,5 @@
 # Release-readiness inventory
 
-Status date: 2026-08-10. This is a source and packaging inventory, not a
-production-readiness assertion or release authorization.
-
 ## Current identity
 
 | Item | Current state |
@@ -15,11 +12,6 @@ production-readiness assertion or release authorization.
 | Tags and GitHub releases | none |
 | Release workflow | none; CI qualifies source and the manual candidate workflow retains an evaluation artifact, but neither signs, tags, publishes, or deploys |
 | Artifact contract | `meshmine-private-evaluation-v1`; pre-production Ubuntu 24.04 x86-64 candidate only |
-
-The repository history does not establish that `0.1.0` was released, so it
-does not make `0.1.1` or `0.2.0` an unambiguous next version. Choose whether
-the first supported artifact is the existing `0.1.0` identity or a newly
-defined compatibility milestone before changing all workspace versions.
 
 MeshMine is principally a set of coordinated daemons and libraries. The first
 bounded contract is therefore a private binary evaluation archive rather than
@@ -48,46 +40,6 @@ its release gates.
 members inherit one private version, license, edition, and Rust requirement and
 that the lockfile uses that same identity. Keep both checks green when the
 eventual version is selected.
-
-### Node advancement decision and evidence
-
-The previous node pin was
-`9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b`. The complete reviewed delta to
-`2712d1dbb74934038188637dccf27d58fbc39a48` contains:
-
-- `d73c0894564503ad04d6783e831a311603ae302f`, which repairs the strictly
-  validated subset of legacy name-tree interval accumulators affected by
-  ordinary BID/REDEEM undo touches before node startup admits writers or a
-  checkpoint fast path;
-- `2b267ffe7fc6f9929063a18986a83b566d02ae6d`, which adds the script-free
-  `WalletChainSnapshot` and `get_chain_snapshot` wallet API without changing
-  the wallet RPC API version; and
-- two documentation-only commits ending at the selected revision.
-
-There are no changes in `hns-consensus`, `hns-mining`, or `hns-primitives`, no
-Cargo manifest or lock-graph changes, and no removal or signature change in the
-`NodeService` surface consumed by `meshmine-hsrd-bridge`. The only new public
-node API in this range is the additive wallet snapshot. The selected source is
-therefore API-compatible with the bridge while including the startup state
-repair. The code and manifests at `2b267ffe7fc6f9929063a18986a83b566d02ae6d`
-and the selected documentation head are identical.
-
-Exact upstream evidence for the selected node revision:
-
-- [hns-node-rs CI run 31426205228](https://github.com/handshake-rs/hns-node-rs/actions/runs/31426205228)
-  completed successfully, including the full locked node/fuzz qualification and
-  RustSec jobs; and
-- [hns-node-rs CodeQL run 31426200536](https://github.com/handshake-rs/hns-node-rs/actions/runs/31426200536)
-  completed successfully for Rust and Actions.
-
-The most recent MeshMine evidence before this dependency and packaging change
-is [CI run 31406917807](https://github.com/handshake-rs/MeshMine/actions/runs/31406917807)
-and [CodeQL run 31406911750](https://github.com/handshake-rs/MeshMine/actions/runs/31406911750),
-both successful at exact commit
-`ad0958e0234075470e5b03ba726e3c9dc9b7f865`. Those runs establish the prior
-baseline only. They do not qualify the repin or private candidate workflow;
-the resulting MeshMine commit still requires its own green CI, RustSec, and
-CodeQL evidence after it is pushed.
 
 ## Private candidate boundary
 

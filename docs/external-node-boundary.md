@@ -9,12 +9,10 @@ manifest and `Cargo.lock`. The current pin is:
 2712d1dbb74934038188637dccf27d58fbc39a48
 ```
 
-This advances the prior `9ed129f30c8cd8cd8a07c6872aa4ac40ece5d23b`
-boundary through the node's bounded legacy name-tree accumulator
-reconciliation and additive atomic wallet-chain snapshot. The MeshMine bridge's
-consensus, mining, primitive, and `NodeService` interfaces are unchanged across
-that delta. The exact review and upstream qualification evidence are recorded
-in [the release-readiness inventory](release-readiness.md).
+The pin supplies bounded name-tree accumulator reconciliation and an atomic
+wallet-chain snapshot. The bridge consumes its consensus, mining, primitive,
+and `NodeService` interfaces. Source and lockfile agreement is checked by the
+[release readiness gates](release-readiness.md).
 
 MeshMine contains no embedded full node, node fallback, JavaScript consensus
 oracle, or runtime path dependency. If the pinned revision is unavailable or

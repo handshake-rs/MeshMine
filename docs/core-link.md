@@ -231,7 +231,7 @@ separately.
 - The Core server accepts one authenticated operator connection at a time.
 - Physical ASIC job-switch, stale-work, reconnect, and fallback behavior remain
   unqualified.
-- Broader historical/WAN/reorganization campaigns and MeshMine production
+- Broader chain-replay/WAN/reorganization campaigns and MeshMine production
   eligibility remain open; they do not rewrite the pinned node's complete
   functional readiness or make any release-stage diagnostic authoritative.
 - Rust formatting, compilation, Clippy, unit tests, and release builds remain

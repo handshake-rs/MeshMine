@@ -81,6 +81,14 @@ MM-0001 lists work-receipt markets only as a future Stage-5 RFC.
 
 ## Release blockers
 
+- The current `Cargo.lock` resolves `rustls-webpki` 0.103.15 through the
+  QUIC network stack. The
+  [certificate-verification advisory](https://rustsec.org/advisories/RUSTSEC-2026-0382.html)
+  is fixed in 0.103.16. Update the lockfile and rerun the exact candidate's
+  RustSec and network qualification before distributing another candidate.
+  The lockfile also resolves Tokio 1.53.0; review the
+  [AsyncFd advisory](https://rustsec.org/advisories/RUSTSEC-2026-0386.html)
+  and move to at least 1.53.3 in the same refresh.
 - Every daemon continues to reject or withhold production eligibility.
 - Physical HS3 and Goldshell qualification and sustained-load evidence are
   absent.
